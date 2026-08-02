@@ -9,3 +9,13 @@ export class CreateNotebooklmDto {
   @IsOptional()
   description?: string;
 }
+
+export class TriggerNotebooklmDto {
+  @IsString()
+  @IsNotEmpty()
+  topic: string;
+
+  @IsString()
+  @IsNotEmpty()
+  markdownContent: string;
+}

@@ -9,3 +9,9 @@ export class CreateResearchDto {
   @IsOptional()
   description?: string;
 }
+
+export class GenerateResearchDto {
+  @IsString()
+  @IsNotEmpty()
+  topic: string;
+}

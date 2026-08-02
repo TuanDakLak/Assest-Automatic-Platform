@@ -1,6 +1,6 @@
-import { Controller, Get, Post, Body, Param, Put, Delete, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Put, Delete } from '@nestjs/common';
 import { NotebooklmService } from './notebooklm.service';
-import { CreateNotebooklmDto } from './dto/create-notebooklm.dto';
+import { CreateNotebooklmDto, TriggerNotebooklmDto } from './dto/create-notebooklm.dto';
 import { UpdateNotebooklmDto } from './dto/update-notebooklm.dto';
 
 @Controller('notebooklm')
@@ -8,10 +8,7 @@ export class NotebooklmController {
   constructor(private readonly notebooklmService: NotebooklmService) {}
 
   @Post('trigger')
-  async triggerAutomation(@Body() body: { topic: string; markdownContent: string }) {
-    if (!body || !body.topic || !body.markdownContent) {
-      throw new BadRequestException('Topic and markdownContent are required.');
-    }
+  async triggerAutomation(@Body() body: TriggerNotebooklmDto) {
     return this.notebooklmService.triggerNotebookLMAutomation(body.topic, body.markdownContent);
   }
 
