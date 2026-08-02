@@ -1,8 +1,8 @@
 import { clsx, type ClassValue } from "clsx";
-import { tailwindMerge } from "tailwind-merge";
+import { twMerge } from "tailwind-merge";
 
 export function cn(...inputs: ClassValue[]) {
-  return tailwindMerge(clsx(inputs));
+  return twMerge(clsx(inputs));
 }
 
 export function formatDate(date: Date): string {
