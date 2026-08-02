@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Put, Delete, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Put, Delete, BadRequestException } from '@nestjs/common';
 import { ResearchService } from './research.service';
 import { CreateResearchDto } from './dto/create-research.dto';
 import { UpdateResearchDto } from './dto/update-research.dto';
@@ -6,6 +6,15 @@ import { UpdateResearchDto } from './dto/update-research.dto';
 @Controller('research')
 export class ResearchController {
   constructor(private readonly researchService: ResearchService) {}
+
+  @Post('generate')
+  async generate(@Body() body: { topic: string }) {
+    if (!body || !body.topic) {
+      throw new BadRequestException('Topic is required in request body.');
+    }
+    const markdown = await this.researchService.generateResearch(body.topic);
+    return { markdown };
+  }
 
   @Post()
   async create(@Body() createDto: CreateResearchDto) {

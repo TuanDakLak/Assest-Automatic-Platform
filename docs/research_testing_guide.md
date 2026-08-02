@@ -59,3 +59,31 @@ export class SlidesWorkflowService {
   }
 }
 ```
+
+---
+
+## 3. Frontend UI Testing (Next.js App)
+
+We have built a responsive, interactive visual testing dashboard for this feature.
+
+### Verification Steps
+1. **Start Services**:
+   Ensure both backend and frontend servers are running concurrently from the root directory:
+   ```bash
+   pnpm dev:api
+   pnpm dev:web
+   ```
+
+2. **Navigate to Research view**:
+   Open your browser and navigate to:
+   `http://localhost:3000/research`
+
+3. **Trigger Generation**:
+   - In the **Mock AI Researcher** panel on the left, enter a topic name (e.g. `Server Components in Next.js 15`).
+   - Click the **Generate Research** button.
+
+4. **Verify Components**:
+   - **Loading State**: A loading spinner and "Generating Source..." status appears.
+   - **Markdown-to-HTML parser**: Once the request completes, the document appears on the right mapped into clean, styled visual dashboard cards.
+   - **Copy Action**: Clicking the clipboard icon in the toolbar copies the raw Markdown content.
+   - **Download Action**: Clicking the download icon downloads the generated report directly as a localized `.md` file (e.g., `server_components_in_next_js_15_research.md`).

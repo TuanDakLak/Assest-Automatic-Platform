@@ -13,11 +13,12 @@ describe('ResearchController', () => {
         {
           provide: ResearchService,
           useValue: {
+            create: jest.fn(),
             findAll: jest.fn().mockResolvedValue([]),
-            findOne: jest.fn().mockResolvedValue({ id: '1' }),
-            create: jest.fn().mockResolvedValue({ id: '1' }),
-            update: jest.fn().mockResolvedValue({ id: '1' }),
-            remove: jest.fn().mockResolvedValue({ id: '1' }),
+            findOne: jest.fn(),
+            update: jest.fn(),
+            remove: jest.fn(),
+            generateResearch: jest.fn().mockResolvedValue('# Mock Markdown Report'),
           },
         },
       ],
@@ -29,5 +30,13 @@ describe('ResearchController', () => {
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
+  });
+
+  describe('generate', () => {
+    it('should call service and return markdown object', async () => {
+      const result = await controller.generate({ topic: 'Deep Learning' });
+      expect(service.generateResearch).toHaveBeenCalledWith('Deep Learning');
+      expect(result).toEqual({ markdown: '# Mock Markdown Report' });
+    });
   });
 });
