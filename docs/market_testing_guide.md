@@ -93,3 +93,44 @@ Ensure the backend server is running (`pnpm dev:api` on `http://localhost:3001`)
   ```bash
   curl -X POST http://localhost:3001/api/v1/market/topics/PASTE-TOPIC-UUID-HERE/recalculate
   ```
+
+---
+
+## 3. Frontend UI Testing (Next.js App)
+
+We have built a responsive, interactive visual testing dashboard for Category, Style, and Topic Management.
+
+### Verification Steps
+1. **Start Services**:
+   Ensure both backend and frontend servers are running concurrently from the root directory:
+   ```bash
+   pnpm dev:api
+   pnpm dev:web
+   ```
+
+2. **Navigate to Market view**:
+   Open your browser and navigate to:
+   `http://localhost:3000/market`
+
+3. **Verify Category Management**:
+   - In the **Categories** panel on the left, type a category name (e.g. `Mobile App`) and click **Add Category**.
+   - Verify it appears in the active categories list immediately.
+
+4. **Verify Style Management**:
+   - In the **Design Styles** panel on the left, type a style name (e.g. `Minimalist`) and click **Add Style**.
+   - Verify it appears in the active styles list immediately.
+
+5. **Verify AI Discovery Engine**:
+   - Click the **Discover New Topics** button in the top-right header panel.
+   - The button will spin ("Running Discovery...") and automatically match your active categories/styles, score them, and populate the list below.
+
+6. **Verify Manual Topic Creation**:
+   - Type a Title (e.g., `Fintech Dashboard UI Concept`).
+   - Select your newly created Category and Style from the dropdowns.
+   - Adjust scores and search volume numbers, then click **Create Scored Topic**.
+   - Verify it is calculated and listed in the database immediately.
+
+7. **Verify Score Recalculation**:
+   - Hover over or locate any topic in the list.
+   - Click the reload icon next to its score. It will query the backend algorithm and update the weighted potential score on-the-fly.
+
