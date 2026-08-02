@@ -1,0 +1,48 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// User model supporting the auth and user systems
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String?
+  role      String   @default("user")
+  assets    Asset[]
+  jobs      Job[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Asset model representing physical/digital generated items
+model Asset {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  url         String?
+  type        String   // IMAGE, VIDEO, SLIDES, DOC, etc.
+  status      String   @default("PENDING")
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Job model for queuing status tracking
+model Job {
+  id        String   @id @default(uuid())
+  type      String
+  status    String   @default("QUEUED")
+  payload   Json?
+  result    Json?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
