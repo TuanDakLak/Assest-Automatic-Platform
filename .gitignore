@@ -133,3 +133,10 @@ Thumbs.db
 /playwright-report/
 /test-results/
 /playwright/.cache/
+
+# NotebookLM Automation
+session.json
+apps/api/session.json
+downloads/
+apps/api/downloads/
+
