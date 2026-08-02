@@ -18,6 +18,7 @@ describe('SlidesController', () => {
             create: jest.fn().mockResolvedValue({ id: '1' }),
             update: jest.fn().mockResolvedValue({ id: '1' }),
             remove: jest.fn().mockResolvedValue({ id: '1' }),
+            parseSlides: jest.fn().mockResolvedValue({ success: true, slideCount: 2 }),
           },
         },
       ],
@@ -29,5 +30,14 @@ describe('SlidesController', () => {
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
+  });
+
+  describe('parseSlides', () => {
+    it('should parse slides via service', async () => {
+      const dto = { filePath: 'test.pptx', scale: 2, transparent: true };
+      const result = await controller.parseSlides(dto);
+      expect(service.parseSlides).toHaveBeenCalledWith(dto);
+      expect(result).toEqual({ success: true, slideCount: 2 });
+    });
   });
 });

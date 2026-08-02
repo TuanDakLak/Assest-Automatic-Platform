@@ -1,11 +1,16 @@
-import { Controller, Get, Post, Body, Param, Put, Delete, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Put, Delete } from '@nestjs/common';
 import { SlidesService } from './slides.service';
-import { CreateSlidesDto } from './dto/create-slides.dto';
+import { CreateSlidesDto, ParseSlidesDto } from './dto/create-slides.dto';
 import { UpdateSlidesDto } from './dto/update-slides.dto';
 
 @Controller('slides')
 export class SlidesController {
   constructor(private readonly slidesService: SlidesService) {}
+
+  @Post('parse')
+  async parseSlides(@Body() dto: ParseSlidesDto) {
+    return this.slidesService.parseSlides(dto);
+  }
 
   @Post()
   async create(@Body() createDto: CreateSlidesDto) {
