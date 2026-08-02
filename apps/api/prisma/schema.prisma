@@ -46,3 +46,41 @@ model Job {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+// Category model for Market module
+model Category {
+  id          String        @id @default(uuid())
+  name        String        @unique
+  description String?
+  topics      MarketTopic[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+// Style model for Market module
+model Style {
+  id          String        @id @default(uuid())
+  name        String        @unique
+  description String?
+  topics      MarketTopic[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+// MarketTopic model representing commercial topics discovered with potential
+model MarketTopic {
+  id               String   @id @default(uuid())
+  title            String
+  categoryId       String
+  category         Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  styleId          String
+  style            Style    @relation(fields: [styleId], references: [id], onDelete: Restrict)
+  trendScore       Float    @default(0.0)
+  marketScore      Float    @default(0.0)
+  searchVolume     Int      @default(0)
+  competitionScore Float    @default(0.0)
+  score            Float    @default(0.0)
+  status           String   @default("DISCOVERED")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}

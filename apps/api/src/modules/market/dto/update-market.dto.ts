@@ -1,11 +1,8 @@
-import { IsString, IsOptional } from 'class-validator';
+import { PartialType } from '@nestjs/swagger';
+import { CreateCategoryDto, CreateStyleDto, CreateMarketTopicDto } from './create-market.dto';
 
-export class UpdateMarketDto {
-  @IsString()
-  @IsOptional()
-  title?: string;
+export class UpdateCategoryDto extends PartialType(CreateCategoryDto) {}
 
-  @IsString()
-  @IsOptional()
-  description?: string;
-}
+export class UpdateStyleDto extends PartialType(CreateStyleDto) {}
+
+export class UpdateMarketTopicDto extends PartialType(CreateMarketTopicDto) {}
