@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Put, Delete, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Put, Delete } from '@nestjs/common';
 import { AutomationService } from './automation.service';
 import { CreateAutomationDto } from './dto/create-automation.dto';
 import { UpdateAutomationDto } from './dto/update-automation.dto';
@@ -6,6 +6,11 @@ import { UpdateAutomationDto } from './dto/update-automation.dto';
 @Controller('automation')
 export class AutomationController {
   constructor(private readonly automationService: AutomationService) {}
+
+  @Post('trigger')
+  async triggerPipeline() {
+    return this.automationService.forceTriggerPipeline();
+  }
 
   @Post()
   async create(@Body() createDto: CreateAutomationDto) {

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AuthModule } from './modules/auth/auth.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { MarketModule } from './modules/market/market.module';
@@ -16,6 +17,7 @@ import { PrismaService } from './database/prisma.service';
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     AuthModule,
     DashboardModule,
     MarketModule,

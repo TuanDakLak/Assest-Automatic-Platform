@@ -18,6 +18,7 @@ describe('AutomationController', () => {
             create: jest.fn().mockResolvedValue({ id: '1' }),
             update: jest.fn().mockResolvedValue({ id: '1' }),
             remove: jest.fn().mockResolvedValue({ id: '1' }),
+            forceTriggerPipeline: jest.fn().mockResolvedValue({ success: true }),
           },
         },
       ],
@@ -29,5 +30,13 @@ describe('AutomationController', () => {
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
+  });
+
+  describe('triggerPipeline', () => {
+    it('should trigger the background run', async () => {
+      const result = await controller.triggerPipeline();
+      expect(service.forceTriggerPipeline).toHaveBeenCalled();
+      expect(result).toEqual({ success: true });
+    });
   });
 });
