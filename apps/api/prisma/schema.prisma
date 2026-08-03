@@ -30,6 +30,7 @@ model Asset {
   status      String   @default("PENDING")
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  metadata    Json?    // Stores prompt templates, token counts, model names, retry stats, etc.
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }

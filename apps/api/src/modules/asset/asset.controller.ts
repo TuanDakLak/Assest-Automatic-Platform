@@ -1,11 +1,19 @@
-import { Controller, Get, Post, Body, Param, Put, Delete, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Put, Delete } from '@nestjs/common';
 import { AssetService } from './asset.service';
-import { CreateAssetDto } from './dto/create-asset.dto';
+import { CreateAssetDto, ExtractAssetDto } from './dto/create-asset.dto';
 import { UpdateAssetDto } from './dto/update-asset.dto';
 
 @Controller('asset')
 export class AssetController {
   constructor(private readonly assetService: AssetService) {}
+
+  @Post('extract')
+  async extractAsset(@Body() dto: ExtractAssetDto) {
+    return this.assetService.extractAsset(dto.slidePngPath, {
+      promptTemplate: dto.promptTemplate,
+      userId: dto.userId,
+    });
+  }
 
   @Post()
   async create(@Body() createDto: CreateAssetDto) {

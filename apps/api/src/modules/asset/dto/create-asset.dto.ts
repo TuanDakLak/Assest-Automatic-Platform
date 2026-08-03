@@ -9,3 +9,17 @@ export class CreateAssetDto {
   @IsOptional()
   description?: string;
 }
+
+export class ExtractAssetDto {
+  @IsString()
+  @IsNotEmpty()
+  slidePngPath: string;
+
+  @IsString()
+  @IsOptional()
+  promptTemplate?: string;
+
+  @IsString()
+  @IsOptional()
+  userId?: string;
+}
