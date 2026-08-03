@@ -152,6 +152,58 @@ export class AssetService {
   }
 
   /**
+   * Automatically removes light backgrounds (chroma-keying white/light-gray pixels)
+   * from the extracted asset image on disk using native canvas.
+   */
+  async removeBackground(imagePath: string): Promise<string> {
+    this.logger.log(`Removing background from image: ${imagePath}`);
+    
+    let skiaCanvas: any;
+    try {
+      skiaCanvas = require('skia-canvas');
+    } catch (err) {
+      this.logger.warn(`skia-canvas not found, skipping background removal fallback. Error: ${err.message}`);
+      return imagePath;
+    }
+
+    try {
+      const { Canvas, loadImage } = skiaCanvas;
+      const img = await loadImage(imagePath);
+      const canvas = new Canvas(img.width, img.height);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+
+      const imgData = ctx.getImageData(0, 0, img.width, img.height);
+      const data = imgData.data;
+
+      // Convert pixels close to white/light-gray to transparent
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        // If Red, Green, and Blue are all above 235 (near white/light background), clear alpha
+        if (r > 235 && g > 235 && b > 235) {
+          data[i + 3] = 0;
+        }
+      }
+
+      ctx.putImageData(imgData, 0, 0);
+      
+      const dir = path.dirname(imagePath);
+      const ext = path.extname(imagePath);
+      const base = path.basename(imagePath, ext);
+      const transparentPath = path.join(dir, `${base}_transparent${ext}`);
+      
+      await canvas.saveAs(transparentPath);
+      this.logger.log(`Background removed successfully. Output saved: ${transparentPath}`);
+      return transparentPath;
+    } catch (error) {
+      this.logger.error(`Error removing background: ${error.message}`);
+      return imagePath; // Return original on error
+    }
+  }
+
+  /**
    * Helper wrapper to retry failed API calls with exponential backoff.
    */
   private async retryWrapper<T>(

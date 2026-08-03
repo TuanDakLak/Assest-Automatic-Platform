@@ -4,8 +4,16 @@ import { NotebooklmService } from './notebooklm.service';
 import { NotebooklmRepository } from './notebooklm.repository';
 import { NotebooklmProcessor } from './notebooklm.processor';
 import { PrismaService } from 'src/database/prisma.service';
+import { SlidesModule } from '../slides/slides.module';
+import { AssetModule } from '../asset/asset.module';
+import { QualityModule } from '../quality/quality.module';
 
 @Module({
+  imports: [
+    SlidesModule,
+    AssetModule,
+    QualityModule,
+  ],
   controllers: [NotebooklmController],
   providers: [
     NotebooklmService,
@@ -16,3 +24,4 @@ import { PrismaService } from 'src/database/prisma.service';
   exports: [NotebooklmService],
 })
 export class NotebooklmModule {}
+

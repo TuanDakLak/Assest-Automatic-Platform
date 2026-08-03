@@ -3,11 +3,22 @@ import { Worker, Job } from 'bullmq';
 import { chromium } from 'playwright';
 import * as path from 'path';
 import * as fs from 'fs';
+import { PrismaService } from 'src/database/prisma.service';
+import { SlidesService } from '../slides/slides.service';
+import { AssetService } from '../asset/asset.service';
+import { QualityService } from '../quality/quality.service';
 
 @Injectable()
 export class NotebooklmProcessor implements OnModuleInit, OnModuleDestroy {
   private worker: Worker;
   private readonly logger = new Logger(NotebooklmProcessor.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly slidesService: SlidesService,
+    private readonly assetService: AssetService,
+    private readonly qualityService: QualityService,
+  ) {}
 
   onModuleInit() {
     const redisHost = process.env.REDIS_HOST || 'localhost';
@@ -147,6 +158,65 @@ export class NotebooklmProcessor implements OnModuleInit, OnModuleDestroy {
 
         this.logger.log(`[Job ${job.id}] File downloaded and saved to: ${downloadedFilePath}`);
         success = true;
+
+        // --- CONNECT DOWNSTREAM PIPELINE ---
+        this.logger.log(`[Job ${job.id}] Triggering downstream E2E processing: Parse -> Category Copy -> Extract -> Remove Background -> Quality Check`);
+        
+        // 1. Resolve category folder name to copy slides into appropriate section
+        let categoryName = 'general';
+        const dbTopic = await this.prisma.marketTopic.findFirst({
+          where: { title: topic },
+          include: { category: true }
+        });
+        if (dbTopic?.category) {
+          categoryName = dbTopic.category.name.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+        }
+
+        const categoryDir = path.join(process.cwd(), 'downloads', 'categories', categoryName, topic.toLowerCase().replace(/[^a-z0-9]+/g, '_'));
+        if (!fs.existsSync(categoryDir)) {
+          fs.mkdirSync(categoryDir, { recursive: true });
+        }
+
+        // 2. Parse slide PPTX to PNG images inside the category-specific directory
+        const parseResult = await this.slidesService.parseSlides({
+          filePath: downloadedFilePath,
+          outputDir: categoryDir,
+          scale: 2.0,
+          transparent: false
+        });
+
+        if (parseResult.success && parseResult.savedPaths) {
+          this.logger.log(`[Job ${job.id}] Successfully parsed ${parseResult.slideCount} slides into category folder: ${categoryDir}`);
+          
+          for (const slidePath of parseResult.savedPaths) {
+            this.logger.log(`[Job ${job.id}] Extracting assets from slide: ${slidePath}`);
+            
+            // 3. Extract asset from slide PNG with user prompt template
+            const extractResult = await this.assetService.extractAsset(slidePath, {
+              promptTemplate: `Isolate the design assets from this slide. The design style is 3D graphic design style with a clean, light background. Keep only the central asset graphic.`,
+            });
+
+            if (extractResult.success && extractResult.assetId) {
+              const assetId = extractResult.assetId;
+              const assetRecord = extractResult.asset;
+              
+              if (assetRecord.url) {
+                // 4. Remove light background (transparent overlay)
+                const transparentPath = await this.assetService.removeBackground(assetRecord.url);
+                
+                // Update Asset URL to the new background-removed file
+                await this.prisma.asset.update({
+                  where: { id: assetId },
+                  data: { url: transparentPath }
+                });
+
+                // 5. Execute Quality Checker on the final background-removed asset
+                this.logger.log(`[Job ${job.id}] Executing Quality check on asset: ${assetId}`);
+                await this.qualityService.checkQuality(assetId);
+              }
+            }
+          }
+        }
       } catch (err: any) {
         this.logger.warn(`[Job ${job.id}] Attempt ${attempt} failed with: ${err.message}`);
         if (attempt >= maxRetries) {
