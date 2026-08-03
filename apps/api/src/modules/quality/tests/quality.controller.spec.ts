@@ -18,6 +18,7 @@ describe('QualityController', () => {
             create: jest.fn().mockResolvedValue({ id: '1' }),
             update: jest.fn().mockResolvedValue({ id: '1' }),
             remove: jest.fn().mockResolvedValue({ id: '1' }),
+            checkQuality: jest.fn().mockResolvedValue({ success: true, finalScore: 95, passed: true }),
           },
         },
       ],
@@ -29,5 +30,15 @@ describe('QualityController', () => {
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
+  });
+
+  describe('checkQuality', () => {
+    it('should invoke service.checkQuality with assetId payload', async () => {
+      const dto = { assetId: 'asset-1' };
+      const result = await controller.checkQuality(dto);
+
+      expect(service.checkQuality).toHaveBeenCalledWith(dto.assetId);
+      expect(result).toEqual({ success: true, finalScore: 95, passed: true });
+    });
   });
 });

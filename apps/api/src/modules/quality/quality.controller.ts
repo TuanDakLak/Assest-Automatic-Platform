@@ -1,11 +1,16 @@
-import { Controller, Get, Post, Body, Param, Put, Delete, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Put, Delete } from '@nestjs/common';
 import { QualityService } from './quality.service';
-import { CreateQualityDto } from './dto/create-quality.dto';
+import { CreateQualityDto, CheckQualityDto } from './dto/create-quality.dto';
 import { UpdateQualityDto } from './dto/update-quality.dto';
 
 @Controller('quality')
 export class QualityController {
   constructor(private readonly qualityService: QualityService) {}
+
+  @Post('check')
+  async checkQuality(@Body() dto: CheckQualityDto) {
+    return this.qualityService.checkQuality(dto.assetId);
+  }
 
   @Post()
   async create(@Body() createDto: CreateQualityDto) {

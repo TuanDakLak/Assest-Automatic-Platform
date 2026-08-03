@@ -9,3 +9,9 @@ export class CreateQualityDto {
   @IsOptional()
   description?: string;
 }
+
+export class CheckQualityDto {
+  @IsString()
+  @IsNotEmpty()
+  assetId: string;
+}
