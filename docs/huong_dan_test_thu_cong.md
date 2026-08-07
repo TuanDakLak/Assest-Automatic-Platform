@@ -1,112 +1,149 @@
-# Hướng Dẫn Kiểm Thử Thủ Công Toàn Diện (Manual Testing Guide)
+# Hướng Dẫn Kiểm Thử Từ A-Z: Từ Ý Tưởng Đến Thành Phẩm Figma
+## AI Asset Automation Platform
 
-Tài liệu này hướng dẫn chi tiết cách kiểm thử thủ công tất cả các tính năng trên giao diện người dùng (Frontend Web Dashboard) kết hợp với Backend API.
-
----
-
-## 1. Chuẩn Bị Môi Trường Trước Khi Test
-
-Đảm bảo các dịch vụ sau đang chạy trên máy tính của bạn:
-
-1. **Backend API (NestJS)**: Chạy trên cổng `3001`
-   * Lệnh khởi động: `pnpm dev:api` (hoặc `pnpm --filter api run start:dev`)
-2. **Frontend Web (Next.js)**: Chạy trên cổng `3000`
-   * Lệnh khởi động: `pnpm dev:web` (hoặc `pnpm --filter web run dev`)
-3. **Cơ sở dữ liệu (Prisma/PostgreSQL hoặc SQLite)**: Đã được sync migration đầy đủ (`pnpm db:generate`).
-4. **Redis**: Đang chạy trên cổng mặc định `6379` (yêu cầu bắt buộc để chạy Queue BullMQ cho NotebookLM).
-5. **Playwright Browser**: Đã cài đặt nhân trình duyệt Chromium:
-   * Lệnh cài đặt: `npx playwright install chromium`
+Tài liệu này hướng dẫn người dùng cuối (User) và lập trình viên cách kiểm thử toàn diện hệ thống từ A-Z để sản xuất ra một ảnh tài nguyên 3D trong suốt chất lượng cao, sẵn sàng kéo thả sử dụng trên thiết bị thiết kế chuyên nghiệp **Figma**. Cuối tài liệu là mô tả chi tiết **Luồng Logic Nghiệp Vụ (Business Logic Flow)** chạy ngầm bên dưới hệ thống.
 
 ---
 
-## 2. Kịch Bản 1: Quản Lý Thị Trường (Market Panel)
+## PHẦN I: HƯỚNG DẪN KIỂM THỬ HỆ THỐNG TỪ A-Z (USER TESTING GUIDE)
 
-Mục tiêu: Đảm bảo thêm mới danh mục, phong cách và các chủ đề thương mại hoạt động bình thường, không còn lỗi `Validation failed`.
-
-### Các bước thực hiện:
-1. Truy cập vào Dashboard Frontend: `http://localhost:3000/market` (hoặc tab **Market** trên thanh điều hướng).
-2. **Thêm Danh mục (Category)**:
-   * Tìm nút **Add Category** (hoặc biểu tượng dấu cộng tương ứng).
-   * Nhập tên danh mục (ví dụ: `T-Shirt Design`, `Canvas Wall Art`).
-   * Nhập mô tả tùy chọn và nhấn **Save / Add**.
-   * *Đánh giá*: Danh mục mới phải hiển thị ngay trên danh sách hoặc thanh lựa chọn mà không báo lỗi.
-3. **Thêm Phong cách (Style)**:
-   * Tìm nút **Add Style**.
-   * Nhập tên phong cách (ví dụ: `Vintage Retro`, `Minimalist Line Art`, `Watercolor`).
-   * Nhập mô tả và nhấn **Save**.
-   * *Đánh giá*: Phong cách mới xuất hiện thành công.
-4. **Thêm Chủ đề Thị trường (Market Topic)**:
-   * Tìm nút **Create/Add Topic**.
-   * Điền các thông tin:
-     * **Title**: Tên chủ đề (ví dụ: `Cute cat drinking coffee vintage`).
-     * **Category**: Chọn danh mục đã tạo ở bước 2.
-     * **Style**: Chọn phong cách đã tạo ở bước 3.
-     * **Trend Score**: Điền điểm xu hướng (từ `0` đến `100`, ví dụ: `85`).
-     * **Market Score**: Điền điểm thị trường (từ `0` đến `100`, ví dụ: `90`).
-     * **Search Volume**: Điền lượng tìm kiếm (ví dụ: `15000`).
-     * **Competition Score**: Điền điểm cạnh tranh (từ `0` đến `100`, ví dụ: `40`).
-   * Nhấn **Submit / Create**.
-   * *Đánh giá*: Chủ đề được tạo thành công, xuất hiện trong bảng danh sách với trạng thái mặc định là `DISCOVERED` và điểm tổng hợp (Weighted Score) tự động tính toán chính xác.
+### Bước 1: Chuẩn bị môi trường & phiên đăng nhập Google
+Để Playwright có thể điều khiển trình duyệt truy cập và tương tác tự động với Google NotebookLM, hệ thống cần một phiên đăng nhập Google hợp lệ (để tránh bị Google Captcha chặn):
+1. **Lưu phiên đăng nhập Google**:
+   * Khởi chạy một cửa sổ trình duyệt Playwright ở chế độ tương tác (non-headless) để đăng nhập tài khoản Google của bạn.
+   * Trích xuất cookie và trạng thái đăng nhập lưu vào file `session.json` đặt tại thư mục gốc của dự án backend: `apps/api/session.json`.
+2. **Khởi chạy hệ thống**:
+   * Chạy Redis server (mặc định cổng `6379`).
+   * Khởi động backend API: `pnpm dev:api` (chạy trên `http://localhost:3001`).
+   * Khởi động dashboard frontend: `pnpm dev:web` (chạy trên `http://localhost:3000`).
 
 ---
 
-## 3. Kịch Bản 2: Động Cơ Nghiên Cứu AI (Research Panel)
-
-Mục tiêu: Tạo báo cáo nghiên cứu dạng Markdown tối ưu hóa cho NotebookLM từ một chủ đề.
-
-### Các bước thực hiện:
-1. Truy cập tab **Research** (`http://localhost:3000/research`).
-2. Chọn một chủ đề có sẵn trong danh sách (được đồng bộ từ Market Module) hoặc nhập trực tiếp chủ đề mong muốn vào ô tìm kiếm/nhập liệu.
-3. Nhấp chọn nút **Generate Research Report** (hoặc **Tự động tạo báo cáo**).
-4. Đợi hệ thống phản hồi (tầm 1-3 giây do đang sử dụng Mock AI API tốc độ cao).
-5. *Đánh giá*:
-   * Trên giao diện hiển thị tài liệu nghiên cứu định dạng Markdown chi tiết.
-   * Báo cáo phải chứa đầy đủ các phần bắt buộc:
-     * **Overview** (Tổng quan)
-     * **Core Concepts** (Khái niệm cốt lõi)
-     * **Industry Terminology** (Thuật ngữ chuyên ngành)
-     * **Latest Trends** (Xu hướng mới nhất)
-     * **Real-world Examples** (Ví dụ thực tế)
-     * **Glossary** (Bảng thuật ngữ)
-     * **References** (Tài liệu tham khảo)
+### Bước 2: Khai thác ý tưởng thiết kế tiềm năng (Market Discovery)
+Mục tiêu là tìm ra các chủ đề thiết kế thương mại đang hot trên thị trường để đảm bảo tài nguyên tạo ra dễ bán và có lượng tìm kiếm lớn.
+1. Truy cập vào Dashboard: `http://localhost:3000/dashboard` và chọn tab **Categories**.
+2. Thêm mới một danh mục thiết kế mong muốn, ví dụ:
+   * **Category Name**: `Technology`
+   * **Description**: `Thiết kế kỹ thuật số, công nghệ tương lai`
+3. Chuyển sang tab **Topics** và tạo mới một chủ đề tiềm năng:
+   * **Title**: `3D Glossy Processor Chip` (Chíp vi xử lý 3D bóng bẩy)
+   * **Category Selection**: Chọn `Technology`
+   * **Trend Score**: `95`
 
 ---
 
-## 4. Kịch Bản 3: Tự Động Hóa NotebookLM (NotebookLM Automation)
-
-Mục tiêu: Đưa dữ liệu nghiên cứu vào Google NotebookLM để sinh Slide trình chiếu và tải về tự động.
-
-### Bước chuẩn bị tài khoản (Bắt buộc):
-Vì NotebookLM yêu cầu đăng nhập tài khoản Google, bạn cần lưu file phiên đăng nhập Google trước:
-1. Trên máy tính của bạn, mở terminal chạy lệnh Playwright ở chế độ tương tác để đăng nhập tài khoản Google của bạn:
-   * Cách làm: Tạo file session bằng cách chạy trình duyệt và lưu lại trạng thái cookies vào file `session.json` ở thư mục gốc của dự án (hoặc thư mục được chỉ định trong `.env` bởi khóa `NOTEBOOKLM_SESSION_STATE_PATH`).
-   * *Lưu ý*: Không commit file `session.json` lên Git (đã được cấu hình tự động bỏ qua trong `.gitignore`).
-
-### Các bước thực hiện trên Frontend:
-1. Truy cập tab **NotebookLM** (`http://localhost:3000/notebooklm`).
-2. Chọn bài nghiên cứu Markdown đã tạo ở Kịch bản 2.
-3. Nhấp nút **Trigger Presentation Generation** (hoặc **Bắt đầu tạo Slide tự động**).
-4. Hệ thống sẽ trả về ID của tiến trình ngầm (BullMQ Job) và hiển thị trạng thái `QUEUED` hoặc `ACTIVE`.
-5. Mở tab **Jobs / Monitor** (hoặc xem trực tiếp log từ Terminal của Backend):
-   * Bạn sẽ thấy trình duyệt Playwright Chromium chạy ngầm (Headless), tự động truy cập NotebookLM, tạo Notebook mới, tải tài liệu Markdown lên, đợi nạp dữ liệu, tạo Slide trình bày và tải file PPTX về thư mục lưu trữ cục bộ.
-6. *Đánh giá*: Khi Job hoàn thành (`COMPLETED`), file PowerPoint (.pptx) sẽ tự động xuất hiện trong thư mục tải xuống của hệ thống.
+### Bước 3: Tự động nghiên cứu tài liệu nguồn (Automated Research)
+1. Trong bảng danh sách chủ đề ở tab **Topics**, nhấn nút **Run Pipeline** bên cạnh chủ đề `3D Glossy Processor Chip`.
+2. Hệ thống sẽ ngay lập tức kích hoạt `Research Service` viết một bài báo cáo phân tích chi tiết bằng ngôn ngữ Markdown (chứa định nghĩa phần cứng, lịch sử thiết kế chip, bảng chú giải thuật ngữ, ví dụ thực tế và tài liệu tham khảo) được tối ưu cấu trúc nhằm nạp vào NotebookLM.
 
 ---
 
-## 5. Kịch Bản 4: Trích Xuất Ảnh Slide (Slide Parser)
+### Bước 4: Tạo slide tự động bằng NotebookLM (Headless Slide Generation)
+1. Một Job tiến trình ngầm (BullMQ Job) sẽ được đẩy vào hàng đợi Redis.
+2. Worker Playwright sẽ tự động mở trình duyệt Chromium ngầm, nạp file `session.json` để đăng nhập Google tự động.
+3. Worker thực hiện các thao tác:
+   * Truy cập `https://notebooklm.google/`.
+   * Nhấp chọn tạo mới một Notebook (`New Notebook`).
+   * Tải tệp tài liệu nghiên cứu Markdown vừa tạo ở Bước 3 lên.
+   * Gửi prompt định hướng thiết kế vào ô chat sinh slide: 
+     * *Prompt cấu hình*: `"Create a slide presentation featuring 3d assets and elements on a clean, light background."*
+   * Đợi NotebookLM sinh slide và tải về máy tệp PowerPoint (.pptx).
 
-Mục tiêu: Cắt file PowerPoint (.pptx) vừa tải về thành các slide ảnh PNG riêng lẻ chất lượng cao.
+---
 
-### Các bước thực hiện:
-1. Truy cập tab **Slides / Parser** (`http://localhost:3000/slides`).
-2. Tải lên (Upload) file PowerPoint `.pptx` của bạn hoặc nhập đường dẫn file vật lý trên ổ đĩa.
-3. Tùy chọn cấu hình bộ chuyển đổi trên giao diện:
-   * **Resolution / Scale**: Chọn độ phân giải (ví dụ: `2.0` cho ảnh nét gấp đôi gốc, hoặc nhập chiều rộng `1920` pixel).
-   * **Background Transparency**: Bật hoặc Tắt chế độ nền trong suốt (Transparent).
-4. Nhấn nút **Parse Presentation** (hoặc **Trích xuất Slide**).
-5. Đợi hệ thống xử lý (tốc độ cực nhanh nhờ thư viện render Skia trực tiếp trên Node.js).
-6. *Đánh giá*:
-   * Giao diện hiển thị danh sách các slide đã được cắt thành ảnh dạng lưới (Grid View).
-   * Mỗi slide hiển thị đầy đủ số trang, độ phân giải thực tế (ví dụ: `1920x1080`).
-   * Nhấp chọn từng ảnh để xem chi tiết hoặc nhấn nút **Download All PNGs** dưới dạng file nén `.zip` (hoặc tải trực tiếp từng ảnh).
-   * Kiểm tra ảnh tải về: Định dạng `.png`, chữ và hình vẽ vector hiển thị sắc nét, nền trong suốt được áp dụng chính xác nếu chọn chế độ Transparent.
+### Bước 5: Cắt slide và phân loại tự động vào Category (Slide Parsing & Organization)
+Khi tệp PPTX được tải về thành công:
+1. Hệ thống tự động di chuyển tệp trình chiếu vào đúng phân mục lưu trữ theo tên Category đã khai báo:
+   * Đường dẫn mục lưu trữ: `downloads/categories/technology/3d_glossy_processor_chip/`
+2. `Slides Service` sử dụng thư viện kết xuất đồ họa Node gốc (`skia-canvas`) để chuyển đổi từng slide trong tệp PPTX thành các tệp ảnh PNG chất lượng cao dạng lưới.
+
+---
+
+### Bước 6: Trích xuất & Tách nền tự động bằng AI (Asset Extraction & Background Removal)
+1. Đối với từng tệp ảnh slide PNG vừa được tạo ra, hệ thống tự động đẩy dữ liệu sang `Asset Service`.
+2. AI GPT Vision phân tích cấu trúc đồ họa trên slide và trích xuất vật thể chip 3D trung tâm.
+3. Thuật toán **Chroma-Keying xóa nền** gốc chạy trực tiếp trên Server:
+   * Đọc dữ liệu pixel từ canvas.
+   * Tự động quét màu nền sáng của slide (các màu có mức phản quang trắng gần tuyệt đối $R, G, B > 235$) và chuyển đổi kênh màu Alpha (độ mờ đục) về $0$.
+   * Xuất ra ảnh vật thể hoàn toàn trong suốt định dạng PNG: `3d_glossy_processor_chip_slide_1_transparent.png`.
+
+---
+
+### Bước 7: Kiểm định chất lượng & Xuất bản (Quality Checker & Pass Gate)
+1. Hệ thống tự động chuyển ảnh đã tách nền qua `Quality Service`.
+2. AI QA Engineer sẽ kiểm định ảnh dựa trên 7 tiêu chí (Tách nền sạch, không dính chữ trôi nổi, không có logo/watermark, không méo hình, không nhòe, v.v.).
+3. Ảnh đạt điểm chất lượng **$\ge 90/100$** sẽ được gắn nhãn trạng thái **`COMPLETED`** trên Dashboard, sẵn sàng cho việc sử dụng.
+
+---
+
+### Bước 8: Sử dụng thành phẩm trên Figma (Figma Integration)
+1. Mở phần mềm thiết kế **Figma** (phiên bản Web hoặc Desktop Application) và tạo/mở một trang nháp thiết kế (Canvas).
+2. Mở thư mục chứa ảnh thành phẩm trên máy tính của bạn:
+   * Đường dẫn: `downloads/categories/technology/3d_glossy_processor_chip/`
+3. Kéo tệp ảnh `3d_glossy_processor_chip_slide_1_transparent.png` thả trực tiếp vào Figma.
+4. **Kết quả đạt được trên Figma**:
+   * Vật thể chip vi xử lý 3D hiển thị sắc nét với các góc cạnh bóng bẩy.
+   * **Nền xung quanh hoàn toàn trong suốt**, cho phép bạn đặt đè vật thể lên bất kỳ background tối, sáng hoặc màu gradient nào mà không sợ dính vệt viền trắng hay chữ nền slide cũ.
+   * Sẵn sàng ghép nối vào các layout banner tiếp thị, thiết kế giao diện web (UI/UX), hoặc bài viết mạng xã hội cao cấp.
+
+---
+---
+
+## PHẦN II: LUỒNG LOGIC NGHIỆP VỤ CỦA HỆ THỐNG (BUSINESS LOGIC FLOW)
+
+Luồng nghiệp vụ xử lý của AI Asset Automation Platform được tổ chức chạy bất đồng bộ nhằm tối ưu hóa tài nguyên server và ngăn nghẽn API:
+
+```
+[Người dùng/Cron Scheduler]
+           │
+           ▼
+┌────────────────────────────────────────────────────────┐
+│ 1. MARKET MODULE (Khám phá & Chấm điểm ý tưởng)       │
+│    - Rà soát xu hướng, tính toán Market Score          │
+│    - Lưu ý tưởng tiềm năng vào CSDL ở trạng thái       │
+│      "DISCOVERED" nếu điểm số đạt chuẩn.               │
+└──────────────────┬─────────────────────────────────────┘
+                   │ (Tự động kích hoạt hoặc kích hoạt bằng tay)
+                   ▼
+┌────────────────────────────────────────────────────────┐
+│ 2. RESEARCH MODULE (Nghiên cứu tài liệu nguồn)         │
+│    - Viết báo cáo Markdown chi tiết cho chủ đề         │
+│    - Trạng thái Topic chuyển sang "ANALYZING"          │
+└──────────────────┬─────────────────────────────────────┘
+                   │ (Đẩy tác vụ vào hàng đợi BullMQ + Redis)
+                   ▼
+┌────────────────────────────────────────────────────────┐
+│ 3. NOTEBOOKLM AUTOMATION (Tự động hóa trình duyệt)      │
+│    - Trình duyệt Playwright chạy ngầm tải session.json │
+│    - Đăng nhập, tải file Markdown, viết Prompt tạo     │
+│      slide "3D, light background"                      │
+│    - Tải tệp PPTX về thư mục tạm                       │
+└──────────────────┬─────────────────────────────────────┘
+                   │ (Hoàn thành Job tải file)
+                   ▼
+┌────────────────────────────────────────────────────────┐
+│ 4. SLIDES PARSER MODULE (Tách trang & Tổ chức thư mục) │
+│    - Tạo thư mục lưu trữ theo đúng Category            │
+│    - Chuyển đổi tệp PPTX sang các Slide ảnh PNG        │
+└──────────────────┬─────────────────────────────────────┘
+                   │ (Gửi luồng ảnh slide đi trích xuất)
+                   ▼
+┌────────────────────────────────────────────────────────┐
+│ 5. ASSET EXTRACTION MODULE (Tách lọc vật thể đồ họa)   │
+│    - Dùng GPT Vision bóc tách cấu trúc ảnh            │
+│    - Tích hợp hàm Chroma-Keying quét dải màu sáng      │
+│    - Xóa nền trắng và tạo kênh Alpha trong suốt        │
+└──────────────────┬─────────────────────────────────────┘
+                   │ (Lưu ảnh trong suốt mới tạo)
+                   ▼
+┌────────────────────────────────────────────────────────┐
+│ 6. QUALITY CHECKER MODULE (Kiểm định chất lượng)       │
+│    - Chấm điểm hình ảnh dựa trên 7 tiêu chí visual     │
+│    - Điểm >= 90: Update CSDL trạng thái "COMPLETED"    │
+│    - Điểm < 90: Đánh dấu trạng thái lỗi "FAILED_QC"    │
+└────────────────────────────────────────────────────────┘
+```
+
+### Các trạng thái chuyển đổi của Asset & Topic trong Cơ sở dữ liệu:
+* **Topic Status Flow**: `DISCOVERED` (Được tìm thấy) $\rightarrow$ `ANALYZING` (Đang tạo báo cáo & chạy slide) $\rightarrow$ `SLIDES_GENERATED` (Đã sinh và tải slide PowerPoint thành công).
+* **Asset Status Flow**: `PENDING` (Đang chờ xử lý) $\rightarrow$ `COMPLETED` (Xóa nền & vượt qua bài kiểm định chất lượng) OR `FAILED_QC` (Không vượt qua tiêu chuẩn hình ảnh thương mại) OR `FAILED` (Gặp lỗi hệ thống hoặc kết nối API trong quá trình sinh/trích xuất).
