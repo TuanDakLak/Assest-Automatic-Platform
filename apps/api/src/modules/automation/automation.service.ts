@@ -26,25 +26,37 @@ export class AutomationService {
    * 4. Queues headless browser automation tasks.
    */
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
-  async handleDailyAssetFactoryPipeline() {
+  async handleDailyAssetFactoryPipeline(topicId?: string) {
     this.logger.log('--- Initiating Scheduled End-To-End Automation Pipeline ---');
     try {
-      // Step 1: Discover topics
-      this.logger.log('[Pipeline] Step 1: Scanning categories and styles for commercial concepts...');
-      const discovered = await this.marketService.discoverCommercialTopics();
-      const count = discovered?.topics?.length || discovered?.count || 0;
-      this.logger.log(`[Pipeline] Discovered ${count} total potential combinations.`);
+      let candidates = [];
 
-      // Step 2: Fetch unanalyzed high-score candidates
-      const candidates = await this.prisma.marketTopic.findMany({
-        where: {
-          score: { gte: 75 },
-          status: 'DISCOVERED',
-        },
-        take: 5, // Process in small chunks to protect resource bounds
-      });
+      if (topicId) {
+        this.logger.log(`[Pipeline] Manual override trigger for specific Topic ID: "${topicId}"`);
+        const topic = await this.prisma.marketTopic.findUnique({
+          where: { id: topicId },
+        });
+        if (topic) {
+          candidates = [topic];
+        }
+      } else {
+        // Step 1: Discover topics
+        this.logger.log('[Pipeline] Step 1: Scanning categories and styles for commercial concepts...');
+        const discovered = await this.marketService.discoverCommercialTopics();
+        const count = discovered?.topics?.length || discovered?.count || 0;
+        this.logger.log(`[Pipeline] Discovered ${count} total potential combinations.`);
 
-      this.logger.log(`[Pipeline] Step 2: Isolated ${candidates.length} high-potential topics (Score >= 75%) needing process.`);
+        // Step 2: Fetch unanalyzed high-score candidates
+        candidates = await this.prisma.marketTopic.findMany({
+          where: {
+            score: { gte: 75 },
+            status: 'DISCOVERED',
+          },
+          take: 5, // Process in small chunks to protect resource bounds
+        });
+      }
+
+      this.logger.log(`[Pipeline] Step 2: Isolated ${candidates.length} high-potential topics needing process.`);
 
       for (const topic of candidates) {
         this.logger.log(`[Pipeline] Processing: "${topic.title}" (Score: ${topic.score.toFixed(1)}%)`);
@@ -74,9 +86,9 @@ export class AutomationService {
   /**
    * Manual force-override.
    */
-  async forceTriggerPipeline() {
+  async forceTriggerPipeline(topicId?: string) {
     // Run asynchronously to allow endpoint response
-    this.handleDailyAssetFactoryPipeline();
+    this.handleDailyAssetFactoryPipeline(topicId);
     return {
       success: true,
       message: 'End-to-end asset factory pipeline triggered in background.',

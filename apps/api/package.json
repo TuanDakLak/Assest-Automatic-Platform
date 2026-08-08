@@ -8,6 +8,7 @@
     "start:dev": "nest start --watch",
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
+    "save-session": "node save-session.js",
     "test": "jest"
   },
   "dependencies": {

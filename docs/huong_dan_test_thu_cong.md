@@ -9,11 +9,16 @@ Tài liệu này hướng dẫn người dùng cuối (User) và lập trình vi
 
 ### Bước 1: Chuẩn bị môi trường & phiên đăng nhập Google
 Để Playwright có thể điều khiển trình duyệt truy cập và tương tác tự động với Google NotebookLM, hệ thống cần một phiên đăng nhập Google hợp lệ (để tránh bị Google Captcha chặn):
-1. **Lưu phiên đăng nhập Google**:
-   * Khởi chạy một cửa sổ trình duyệt Playwright ở chế độ tương tác (non-headless) để đăng nhập tài khoản Google của bạn.
-   * Trích xuất cookie và trạng thái đăng nhập lưu vào file `session.json` đặt tại thư mục gốc của dự án backend: `apps/api/session.json`.
+1. **Lưu phiên đăng nhập Google (Quan trọng)**:
+   * Chạy lệnh sau ở thư mục gốc dự án để mở trình duyệt tương tác:
+     ```powershell
+     pnpm save-session
+     ```
+   * Trình duyệt Chrome/Edge thực tế sẽ tự động khởi chạy. Hãy tiến hành đăng nhập tài khoản Google của bạn.
+   * **CHÚ Ý**: Bạn cần thực hiện đăng nhập và xác thực (nếu có) cho đến khi trình duyệt hiển thị giao diện Dashboard chính của Google NotebookLM (nơi hiển thị danh sách các Notebook và nút lớn để tạo **"New Notebook"**).
+   * Chỉ **sau khi đã đăng nhập thành công hoàn toàn**, hãy quay lại cửa sổ Terminal/Command Prompt và nhấn nút **ENTER** một lần duy nhất để lưu thông tin phiên đăng nhập vào file `apps/api/session.json`. Tránh nhấn ENTER trước khi đăng nhập thành công vì sẽ ghi đè session trống.
 2. **Khởi chạy hệ thống**:
-   * Chạy Redis server (mặc định cổng `6379`).
+   * Đảm bảo Redis server đang chạy (mặc định cổng `6379`).
    * Khởi động backend API: `pnpm dev:api` (chạy trên `http://localhost:3001`).
    * Khởi động dashboard frontend: `pnpm dev:web` (chạy trên `http://localhost:3000`).
 
@@ -34,14 +39,17 @@ Mục tiêu là tìm ra các chủ đề thiết kế thương mại đang hot t
 
 ### Bước 3: Tự động nghiên cứu tài liệu nguồn (Automated Research)
 1. Trong bảng danh sách chủ đề ở tab **Topics**, nhấn nút **Run Pipeline** bên cạnh chủ đề `3D Glossy Processor Chip`.
-2. Hệ thống sẽ ngay lập tức kích hoạt `Research Service` viết một bài báo cáo phân tích chi tiết bằng ngôn ngữ Markdown (chứa định nghĩa phần cứng, lịch sử thiết kế chip, bảng chú giải thuật ngữ, ví dụ thực tế và tài liệu tham khảo) được tối ưu cấu trúc nhằm nạp vào NotebookLM.
+2. Hệ thống sẽ kích hoạt một tiến trình nghiên cứu độc lập cho đúng chủ đề đó (Manual Override) thông qua cổng API `http://localhost:3001/api/v1/automation/trigger` bằng cách gửi kèm `topicId`.
+   * **Chú ý**: Việc nhấn nút tại dòng cụ thể sẽ chỉ chạy cho đúng chủ đề đã chọn mà không kích hoạt quy trình quét xu hướng tự động ngẫu nhiên (Auto-Discovery) hay làm thay đổi danh sách tiêu đề như phiên bản cũ.
+3. Hệ thống kích hoạt `Research Service` viết một bài báo cáo phân tích chi tiết bằng ngôn ngữ Markdown (chứa định nghĩa phần cứng, lịch sử thiết kế chip, bảng chú giải thuật ngữ, ví dụ thực tế và tài liệu tham khảo) được tối ưu cấu trúc nhằm nạp vào NotebookLM. Báo cáo này cũng được lưu trực tiếp vào thư mục `downloads/categories/.../research_report.md` để bạn có thể xem trực tiếp.
 
 ---
 
 ### Bước 4: Tạo slide tự động bằng NotebookLM (Headless Slide Generation)
 1. Một Job tiến trình ngầm (BullMQ Job) sẽ được đẩy vào hàng đợi Redis.
-2. Worker Playwright sẽ tự động mở trình duyệt Chromium ngầm, nạp file `session.json` để đăng nhập Google tự động.
-3. Worker thực hiện các thao tác:
+2. Bạn có thể theo dõi tiến trình chạy ngầm này trực tiếp bằng cách chuyển sang tab **Jobs** trên Dashboard Web. Tab này hiển thị các công việc BullMQ thực tế đang chờ hoặc đang chạy lấy trực tiếp từ Redis server.
+3. Worker Playwright sẽ tự động mở trình duyệt Chromium ngầm, nạp file `session.json` để đăng nhập Google tự động.
+4. Worker thực hiện các thao tác:
    * Truy cập `https://notebooklm.google/`.
    * Nhấp chọn tạo mới một Notebook (`New Notebook`).
    * Tải tệp tài liệu nghiên cứu Markdown vừa tạo ở Bước 3 lên.

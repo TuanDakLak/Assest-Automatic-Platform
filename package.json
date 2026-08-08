@@ -5,6 +5,7 @@
   "scripts": {
     "dev:api": "pnpm --filter api run start:dev",
     "dev:web": "pnpm --filter web run dev",
+    "save-session": "pnpm --filter api run save-session",
     "build:api": "pnpm --filter api run build",
     "build:web": "pnpm --filter web run build",
     "db:migrate": "pnpm --filter api run db:migrate",

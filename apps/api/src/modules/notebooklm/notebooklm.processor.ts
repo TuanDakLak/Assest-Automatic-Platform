@@ -177,6 +177,15 @@ export class NotebooklmProcessor implements OnModuleInit, OnModuleDestroy {
           fs.mkdirSync(categoryDir, { recursive: true });
         }
 
+        // Save a permanent copy of the research report in the category directory
+        const permanentReportPath = path.join(categoryDir, 'research_report.md');
+        try {
+          fs.copyFileSync(tempFilePath, permanentReportPath);
+          this.logger.log(`[Job ${job.id}] Saved permanent copy of research report to: ${permanentReportPath}`);
+        } catch (copyErr: any) {
+          this.logger.warn(`[Job ${job.id}] Failed to save permanent copy of research report: ${copyErr.message}`);
+        }
+
         // 2. Parse slide PPTX to PNG images inside the category-specific directory
         const parseResult = await this.slidesService.parseSlides({
           filePath: downloadedFilePath,

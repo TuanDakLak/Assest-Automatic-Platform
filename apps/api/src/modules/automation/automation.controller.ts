@@ -8,8 +8,8 @@ export class AutomationController {
   constructor(private readonly automationService: AutomationService) {}
 
   @Post('trigger')
-  async triggerPipeline() {
-    return this.automationService.forceTriggerPipeline();
+  async triggerPipeline(@Body('topicId') topicId?: string) {
+    return this.automationService.forceTriggerPipeline(topicId);
   }
 
   @Post()
