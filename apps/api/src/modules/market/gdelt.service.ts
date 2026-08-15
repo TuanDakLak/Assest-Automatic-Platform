@@ -88,6 +88,124 @@ export class GdeltService {
     return process.env.GDELT_ENABLED !== 'false' && process.env.NODE_ENV !== 'test';
   }
 
+  private get mockEnabled(): boolean {
+    return process.env.GDELT_MOCK === 'true';
+  }
+
+  private generateMockMetrics(keyword: string): GdeltMetrics {
+    // Generate a simple deterministic hash code from the keyword string
+    let hash = 0;
+    for (let i = 0; i < keyword.length; i++) {
+      hash = keyword.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    
+    // Use the hash to get deterministic values between 40 and 95
+    const seedValue = (min: number, max: number, offset = 0) => {
+      const val = Math.abs(Math.sin(hash + offset));
+      return Math.round(min + val * (max - min));
+    };
+
+    const searchVolume = seedValue(50, 450, 1);
+    const trendScore = seedValue(60, 98, 2);
+    const marketScore = seedValue(55, 95, 3);
+    const competitionScore = seedValue(40, 85, 4);
+
+    return {
+      searchVolume,
+      trendScore,
+      marketScore,
+      competitionScore,
+      distinctDomains: seedValue(5, 50, 5),
+      articleCount: searchVolume * 2,
+      keyword,
+      fetchedAt: new Date(),
+      fromCache: false,
+    };
+  }
+
+  private get newsApiKey(): string | undefined {
+    return process.env.NEWS_API_KEY;
+  }
+
+  private async fetchNewsApiMetrics(keyword: string): Promise<GdeltMetrics | null> {
+    const apiKey = this.newsApiKey;
+    if (!apiKey) return null;
+
+    const encodedKeyword = encodeURIComponent(`"${keyword}"`);
+    const now = new Date();
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+    const toDateStr = (d: Date) => d.toISOString().split('T')[0];
+
+    // Request 1: Recent 7 days (also fetches articles to analyze domains and sentiment)
+    const recentUrl = `https://newsapi.org/v2/everything?q=${encodedKeyword}&from=${toDateStr(sevenDaysAgo)}&language=en&pageSize=100&apiKey=${apiKey}`;
+    
+    // Request 2: Baseline 7 days (previous week)
+    const baselineUrl = `https://newsapi.org/v2/everything?q=${encodedKeyword}&from=${toDateStr(fourteenDaysAgo)}&to=${toDateStr(sevenDaysAgo)}&language=en&pageSize=1&apiKey=${apiKey}`;
+
+    const [recentRes, baselineRes] = await Promise.all([
+      fetch(recentUrl).then(async (r) => {
+        if (!r.ok) throw new Error(`Recent query failed: ${r.status} ${r.statusText}`);
+        return r.json();
+      }),
+      fetch(baselineUrl).then(async (r) => {
+        if (!r.ok) throw new Error(`Baseline query failed: ${r.status} ${r.statusText}`);
+        return r.json();
+      })
+    ]);
+
+    if (recentRes.status !== 'ok' || baselineRes.status !== 'ok') {
+      throw new Error(`NewsAPI returned error status: recent=${recentRes.status}, baseline=${baselineRes.status}`);
+    }
+
+    const recentVol = recentRes.totalResults || 0;
+    const baselineVol = baselineRes.totalResults || 0;
+
+    // Calculate trendScore (recent / baseline * 100)
+    const trendScore = Math.min(100, Math.max(0, Math.round((recentVol / (baselineVol || 1)) * 100)));
+
+    // Calculate competitionScore based on unique domains
+    const articles = recentRes.articles || [];
+    const domains = new Set<string>();
+    articles.forEach((art: any) => {
+      const sourceName = art.source?.name || art.source?.id;
+      if (sourceName) domains.add(sourceName);
+    });
+
+    const distinctDomains = domains.size;
+    const competitionScore = Math.min(100, Math.round((distinctDomains / 30) * 100));
+
+    // Calculate marketScore based on basic sentiment analysis of titles/descriptions
+    let posCount = 0;
+    let negCount = 0;
+    const posKeywords = /\b(growth|record|launch|success|positive|clean|benefit|dynamic|rise|boom|green|breakthrough|key|leading|innovation|innovative|efficient|sustainable|health|improvement|improved|popular)\b/i;
+    const negKeywords = /\b(decline|fall|drop|warning|fail|drop|risk|crisis|threat|negative|low|concern|inflation|slowdown|recession|bankruptcy|collapse|deficit)\b/i;
+
+    articles.forEach((art: any) => {
+      const text = `${art.title || ''} ${art.description || ''}`;
+      if (posKeywords.test(text)) posCount++;
+      if (negKeywords.test(text)) negCount++;
+    });
+
+    const totalSentimentMentions = posCount + negCount;
+    let marketScore = 65; // Default middle-high score
+    if (totalSentimentMentions > 0) {
+      marketScore = Math.min(100, Math.max(0, Math.round((posCount / totalSentimentMentions) * 100)));
+    }
+
+    return {
+      searchVolume: recentVol,
+      trendScore,
+      marketScore,
+      competitionScore,
+      distinctDomains,
+      articleCount: recentVol,
+      keyword,
+      fetchedAt: new Date(),
+      fromCache: false,
+    };
+  }
+
   /**
    * Gap between outbound requests. GDELT tolerates far less than its docs
    * suggest — below ~5s sustained it starts answering 429.
@@ -111,11 +229,11 @@ export class GdeltService {
   }
 
   private get requestTimeoutMs(): number {
-    return parseInt(process.env.GDELT_TIMEOUT_MS || '20000', 10);
+    return parseInt(process.env.GDELT_TIMEOUT_MS || '5000', 10);
   }
 
   private get maxRetries(): number {
-    return parseInt(process.env.GDELT_MAX_RETRIES || '3', 10);
+    return parseInt(process.env.GDELT_MAX_RETRIES || '1', 10);
   }
 
   /** Baseline window used to judge momentum. */
@@ -164,6 +282,51 @@ export class GdeltService {
   async getMetrics(keyword: string, options?: { forceRefresh?: boolean }): Promise<GdeltMetrics | null> {
     const normalised = keyword.trim().toLowerCase();
     if (!normalised) {
+      return null;
+    }
+
+    if (this.mockEnabled) {
+      this.logger.log(`[GDELT] Mock Mode active. Generating deterministic metrics for "${normalised}".`);
+      return this.generateMockMetrics(normalised);
+    }
+
+    if (this.newsApiKey) {
+      this.logger.log(`[NewsAPI] Fetching metrics for "${normalised}" from NewsAPI.org.`);
+      try {
+        if (!options?.forceRefresh) {
+          const cached = await this.readCache(normalised);
+          if (cached) {
+            this.logger.log(`[NewsAPI] Cache hit for "${normalised}" (fetched ${cached.fetchedAt.toISOString()})`);
+            return cached;
+          }
+        }
+        const metrics = await this.fetchNewsApiMetrics(normalised);
+        if (metrics) {
+          await this.writeCache(metrics);
+        }
+        return metrics;
+      } catch (err: any) {
+        this.logger.error(`[NewsAPI] Failed to fetch metrics for "${normalised}": ${err.message}`);
+        const stale = await this.readCache(normalised, { ignoreTtl: true });
+        if (stale) {
+          this.logger.warn(`[NewsAPI] Falling back to stale snapshot for "${normalised}".`);
+          return stale;
+        }
+        return null;
+      }
+    }
+
+    if (this.cooldownSecondsRemaining > 0) {
+      this.logger.warn(
+        `[GDELT] Rate limit cooldown active (${this.cooldownSecondsRemaining}s remaining). ` +
+          `Skipping request for "${normalised}".`
+      );
+      // Fall back to a stale snapshot rather than losing the keyword entirely.
+      const stale = await this.readCache(normalised, { ignoreTtl: true });
+      if (stale) {
+        this.logger.warn(`[GDELT] Falling back to stale snapshot for "${normalised}" during cooldown.`);
+        return stale;
+      }
       return null;
     }
 
@@ -429,46 +592,66 @@ export class GdeltService {
     const url = this.buildUrl(params);
 
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
+      // Abort immediately if a concurrent request hit a 429 and triggered cooldown
+      const cooldownRemaining = this.cooldownSecondsRemaining;
+      if (cooldownRemaining > 0) {
+        throw new Error(
+          `GDELT rate limit cooldown active (${cooldownRemaining}s remaining). ` +
+            `Aborting request for ${params.mode} "${params.query}" to clear queue.`
+        );
+      }
+
       await this.waitForThrottle();
 
       try {
         const body = await this.fetchText(url);
+        const trimmed = body.trim();
 
-        if (body.trim().length === 0) {
-          // Empty 200 means rate limited (or genuinely no data). Retry, then give up.
-          if (attempt < this.maxRetries) {
-            const backoff = this.throttleMs * Math.pow(2, attempt);
-            this.logger.warn(
-              `[GDELT] Empty body for ${params.mode} "${params.query}" (attempt ${attempt}/${this.maxRetries}). Backing off ${backoff}ms.`,
-            );
-            await this.sleep(backoff);
-            continue;
-          }
+        if (trimmed.length === 0) {
+          // Empty 200 means rate limited or genuinely no news coverage.
+          // Trigger the cooldown to protect the IP and abort immediately to clear the queue.
+          this.cooldownUntil = Date.now() + this.cooldownMs;
           this.logger.warn(
-            `[GDELT] No data returned for ${params.mode} "${params.query}" after ${this.maxRetries} attempts.`,
+            `[GDELT] Empty body (rate limit/no coverage) on ${params.mode} "${params.query}". Pausing all requests for ` +
+              `${Math.ceil((this.cooldownUntil - Date.now()) / 1000)}s.`
           );
-          return null;
+          throw new Error(
+            `GDELT returned empty response on ${params.mode} "${params.query}". Aborting request to clear queue.`
+          );
         }
 
-        return JSON.parse(body) as T;
-      } catch (error: any) {
-        // A 429 is GDELT explicitly asking us to stand down. Retrying it on a
-        // few seconds of backoff — as this class originally did — only digs
-        // the hole deeper, so put every request on a shared cooldown instead.
-        if (error?.isRateLimit) {
-          this.cooldownUntil = Date.now() + (error.retryAfterMs ?? this.cooldownMs);
+        // Check if the body looks like HTML or plain text (e.g. rate limit messages)
+        const isJson = trimmed.startsWith('{') || trimmed.startsWith('[');
+        const isRateLimitText = /limit|rate|throttle|ngrams|contact/i.test(trimmed);
+
+        if (!isJson || isRateLimitText) {
+          this.cooldownUntil = Date.now() + this.cooldownMs;
           this.logger.warn(
-            `[GDELT] Rate limited (429). Pausing all requests for ` +
+            `[GDELT] Non-JSON or rate-limit body received on ${params.mode} "${params.query}". Pausing all requests. ` +
+              `Body starts with: "${trimmed.slice(0, 100)}"`
+          );
+          throw new Error(
+            `GDELT rate limited or returned invalid response on ${params.mode} "${params.query}". Aborting request to clear queue.`
+          );
+        }
+
+        return JSON.parse(trimmed) as T;
+      } catch (error: any) {
+        const isTimeout = error?.name === 'AbortError' || error?.message?.includes('timeout') || error?.message?.includes('aborted');
+
+        // A 429 or timeout is GDELT asking us to stand down or experiencing severe issues.
+        // Fast-fail the current request chain immediately. Retrying only deepens the rate limit/blocks the queue.
+        if (error?.isRateLimit || isTimeout) {
+          this.cooldownUntil = Date.now() + this.cooldownMs;
+          this.logger.warn(
+            `[GDELT] ${isTimeout ? 'Timeout' : 'Rate limit (429)'} on ${params.mode} "${params.query}". Pausing all requests for ` +
               `${Math.ceil((this.cooldownUntil - Date.now()) / 1000)}s.`,
           );
 
-          if (attempt >= this.maxRetries) {
-            throw new Error(
-              `GDELT rate limited on ${params.mode} "${params.query}". ` +
-                `Raise GDELT_THROTTLE_MS or wait for the cooldown to clear.`,
-            );
-          }
-          continue; // waitForThrottle() at the top honours the cooldown.
+          throw new Error(
+            `GDELT ${isTimeout ? 'timed out' : 'rate limited'} on ${params.mode} "${params.query}". ` +
+              `Aborting request to clear queue.`
+          );
         }
 
         if (attempt >= this.maxRetries) {
