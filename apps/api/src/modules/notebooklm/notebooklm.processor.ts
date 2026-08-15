@@ -8,6 +8,19 @@ import { SlidesService } from '../slides/slides.service';
 import { AssetService } from '../asset/asset.service';
 import { QualityService } from '../quality/quality.service';
 
+// Plain CommonJS module shared with save-session.js so the browser fingerprint
+// used to SAVE the Google session matches the one used to REPLAY it. Resolves
+// to apps/api/browser-profile.js from both src/ and dist/.
+const browserProfile = require('../../../browser-profile');
+
+import {
+  SELECTORS,
+  buildAppUrl,
+  APP_HOST_PATTERN,
+  OVERLAY_BACKDROP,
+  SLIDE_DECK_BRIEF,
+} from './constants/selectors';
+
 @Injectable()
 export class NotebooklmProcessor implements OnModuleInit, OnModuleDestroy {
   private worker: Worker;
@@ -78,81 +91,176 @@ export class NotebooklmProcessor implements OnModuleInit, OnModuleDestroy {
       attempt++;
       this.logger.log(`[Job ${job.id}] Starting browser automation attempt ${attempt}/${maxRetries}`);
 
-      const browser = await chromium.launch({
+      // Real Chrome first, bundled Chromium only as a last resort. Google
+      // rejects the bundled build far more often.
+      const { browser, channel } = await browserProfile.launchBrowser(
+        chromium,
         headless,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-      });
+        (msg: string) => this.logger.log(`[Job ${job.id}] ${msg}`),
+      );
+
+      if (channel === 'chromium') {
+        this.logger.warn(
+          `[Job ${job.id}] Running on bundled Chromium. Google frequently refuses ` +
+            'sessions from this build — install Chrome or Edge on the host.',
+        );
+      }
 
       try {
-        let contextOptions = {};
+        const storage: Record<string, unknown> = {};
         if (fs.existsSync(sessionPath)) {
           this.logger.log(`[Job ${job.id}] StorageState session file found. Loading cookies and storage...`);
-          contextOptions = { storageState: sessionPath };
+          storage.storageState = sessionPath;
         } else {
           this.logger.warn(`[Job ${job.id}] Warning: No session storageState state file found at: ${sessionPath}. Google account may block this request.`);
         }
 
-        const context = await browser.newContext({
-          ...contextOptions,
+        // Fingerprint (userAgent, locale, timezone, webdriver patch) comes from
+        // browser-profile.js — the same module save-session.js uses.
+        const context = await browserProfile.createContext(browser, {
+          ...storage,
           acceptDownloads: true,
-          viewport: { width: 1280, height: 800 },
-          locale: 'en-US',                         // Ép giao diện NotebookLM sang tiếng Anh
-          extraHTTPHeaders: {
-            'Accept-Language': 'en-US,en;q=0.9',   // Header HTTP báo với Google: dùng tiếng Anh
-          },
         });
 
         const page = await context.newPage();
         page.setDefaultTimeout(35000); // 35 seconds timeout limit
 
-        // Step 1: Open NotebookLM
-        this.logger.log(`[Job ${job.id}] Step 1: Navigating to https://notebooklm.google/`);
-        await page.goto('https://notebooklm.google/', { waitUntil: 'domcontentloaded' });
+        // Step 1: Open the app.
+        //
+        // Must be the .com host. "notebooklm.google" (no .com) is the public
+        // marketing site and since the July 2026 rename it redirects to
+        // notebook.google — a landing page with pricing and an FAQ, no app UI.
+        // Pointing the worker there was why every selector timed out.
+        const appUrl = buildAppUrl();
+        this.logger.log(`[Job ${job.id}] Step 1: Navigating to ${appUrl}`);
+        await page.goto(appUrl, { waitUntil: 'domcontentloaded' });
+
+        // A redirect away from the app host means the session was rejected.
+        await page.waitForTimeout(3000);
+        const landedOn = page.url();
+        if (!APP_HOST_PATTERN.test(landedOn)) {
+          throw new Error(
+            `Expected the Gemini Notebook app but landed on ${landedOn}. ` +
+              'Either session.json was rejected (re-run `pnpm save-session`) or ' +
+              'the app URL moved again — set NOTEBOOKLM_URL to override.',
+          );
+        }
 
         // Step 2: Create Notebook
         this.logger.log(`[Job ${job.id}] Step 2: Creating a new notebook`);
-        const newNotebookBtn = page.locator('button:has-text("New notebook"), [aria-label="New notebook"], button:has-text("Create new")');
+        const newNotebookBtn = page.locator(SELECTORS.newNotebook);
         await newNotebookBtn.waitFor({ state: 'visible', timeout: 15000 });
         await newNotebookBtn.click();
 
-        // Step 3: Upload source file
-        this.logger.log(`[Job ${job.id}] Step 3: Triggering markdown upload input`);
-        const fileInput = page.locator('input[type="file"]');
-        await fileInput.waitFor({ state: 'attached', timeout: 10000 });
-        await fileInput.setInputFiles(tempFilePath);
-        this.logger.log(`[Job ${job.id}] Source file uploaded to NotebookLM.`);
+        // Step 3: Upload the source file.
+        //
+        // Three sub-steps, not one. Creating a notebook opens a source dialog
+        // offering "Upload files / Websites / Drive / Copied text", and the
+        // <input type=file> is only mounted after picking "Upload files".
+        // Waiting for the input straight away — as this used to — waits for an
+        // element that never appears.
+        this.logger.log(`[Job ${job.id}] Step 3: Waiting for the source dialog`);
 
-        // Step 4: Wait for indexing
-        this.logger.log(`[Job ${job.id}] Step 4: Waiting for document indexing...`);
-        const indexingIndicator = page.locator(':has-text("Indexing"), .indexing-spinner, [aria-label*="indexing"]');
-        
-        // Wait for indexing to start (if immediate) and disappear
-        await page.waitForTimeout(3000);
-        if (await indexingIndicator.count() > 0) {
-          await indexingIndicator.waitFor({ state: 'hidden', timeout: 70000 });
+        // The dialog opens by itself after a notebook is created, but renders
+        // a second or two later. Wait for it before deciding anything: acting
+        // too early means clicking "Add source", which sits BEHIND the dialog's
+        // backdrop and produces a 35s "intercepts pointer events" timeout.
+        const uploadTab = page.locator(SELECTORS.uploadFilesTab).first();
+        let dialogOpen = true;
+        try {
+          await uploadTab.waitFor({ state: 'visible', timeout: 20000 });
+        } catch {
+          dialogOpen = false;
         }
-        this.logger.log(`[Job ${job.id}] Document indexing complete.`);
 
-        // Step 5: Generate Slide Deck content
-        this.logger.log(`[Job ${job.id}] Step 5: Requesting slide deck generation`);
-        const generateBtn = page.locator('button:has-text("Generate slide deck"), button:has-text("Create slides"), button:has-text("Study Guide")');
-        await generateBtn.waitFor({ state: 'visible', timeout: 15000 });
-        await generateBtn.click();
+        if (!dialogOpen) {
+          this.logger.log(`[Job ${job.id}] Step 3: Dialog absent, opening it manually`);
 
-        // Wait for generation process
+          // A leftover backdrop would block the click. Clear it first.
+          const backdrop = page.locator(OVERLAY_BACKDROP);
+          if ((await backdrop.count()) > 0) {
+            this.logger.warn(`[Job ${job.id}] An overlay is blocking the page. Sending Escape.`);
+            await page.keyboard.press('Escape');
+            await backdrop.waitFor({ state: 'detached', timeout: 10000 }).catch(() => undefined);
+          }
+
+          const addSources = page.locator(SELECTORS.addSources).first();
+          await addSources.waitFor({ state: 'visible', timeout: 15000 });
+          await addSources.click();
+          await uploadTab.waitFor({ state: 'visible', timeout: 15000 });
+        }
+
+        this.logger.log(`[Job ${job.id}] Step 3: Selecting the "Upload files" option`);
+        await uploadTab.waitFor({ state: 'visible', timeout: 15000 });
+
+        // Clicking "Upload files" pops the operating system's file picker.
+        // A native dialog is outside the page, so nothing in Playwright can
+        // dismiss it — the browser just sits there until the job times out.
+        //
+        // waitForEvent('filechooser') intercepts it before it is drawn, so the
+        // dialog never appears and the file is attached programmatically. This
+        // also removes the dependency on the hidden <input type=file>, which
+        // only gets mounted after the click.
+        const [fileChooser] = await Promise.all([
+          page.waitForEvent('filechooser', { timeout: 20000 }),
+          uploadTab.click(),
+        ]);
+
+        this.logger.log(`[Job ${job.id}] Step 3: Attaching ${path.basename(tempFilePath)}`);
+        await fileChooser.setFiles(tempFilePath);
+        this.logger.log(`[Job ${job.id}] Source file uploaded to Gemini Notebook.`);
+
+        // Step 4: Wait for the source to finish indexing.
+        //
+        // Waiting for a spinner to vanish is unreliable here — the progress bar
+        // is transient and also appears during ordinary page loads, so it can
+        // be missed entirely or seen when nothing is indexing. Waiting for the
+        // per-source checkbox to appear is a positive signal instead.
+        this.logger.log(`[Job ${job.id}] Step 4: Waiting for the source to be indexed...`);
+        await page
+          .locator(SELECTORS.sourceIndexed)
+          .first()
+          .waitFor({ state: 'visible', timeout: 120000 });
+        this.logger.log(`[Job ${job.id}] Source indexed.`);
+
+        // Step 5a: Open the Slide Deck panel.
+        this.logger.log(`[Job ${job.id}] Step 5: Opening the Slide Deck options`);
+        const slideDeckBtn = page.locator(SELECTORS.generateSlides).first();
+        await slideDeckBtn.waitFor({ state: 'visible', timeout: 15000 });
+        await slideDeckBtn.click();
+
+        // Step 5b: Fill in the brief.
+        //
+        // This click opens a "Customize Slide Deck" dialog rather than starting
+        // generation. The dialog carries the free-text brief that steers the
+        // deck toward isolated 3D graphics, which is the whole point of the
+        // pipeline — without it the deck comes back text-heavy and there is
+        // nothing worth extracting.
+        const brief = page.locator(SELECTORS.slideDeckBrief).first();
+        await brief.waitFor({ state: 'visible', timeout: 20000 });
+        await brief.fill(SLIDE_DECK_BRIEF);
+        this.logger.log(`[Job ${job.id}] Step 5: Brief entered`);
+
+        // Step 5c: Start generation.
+        const confirmBtn = page.locator(SELECTORS.generateConfirm).first();
+        await confirmBtn.waitFor({ state: 'visible', timeout: 15000 });
+        await confirmBtn.click();
+        this.logger.log(`[Job ${job.id}] Step 5: Generation requested`);
+
+        // Wait for the deck to finish. The dialog closes on submit, so the
+        // download control appearing is the completion signal.
         this.logger.log(`[Job ${job.id}] Waiting for slide generation...`);
-        await page.waitForTimeout(5000);
-        const generatingIndicator = page.locator(':has-text("Generating"), .generating-spinner');
-        if (await generatingIndicator.count() > 0) {
-          await generatingIndicator.waitFor({ state: 'hidden', timeout: 90000 });
-        }
+        await page
+          .locator(SELECTORS.download)
+          .first()
+          .waitFor({ state: 'visible', timeout: 300000 });
         this.logger.log(`[Job ${job.id}] Slide generation successful.`);
 
         // Step 6: Download slide deck presentation
         this.logger.log(`[Job ${job.id}] Step 6: Initiating file download`);
         const downloadPromise = page.waitForEvent('download', { timeout: 30000 });
         
-        const downloadBtn = page.locator('button[title*="Download"], button:has-text("Download"), button[aria-label*="Download"]');
+        const downloadBtn = page.locator(SELECTORS.download);
         await downloadBtn.first().click();
 
         const download = await downloadPromise;

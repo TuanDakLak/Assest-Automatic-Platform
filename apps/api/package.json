@@ -10,6 +10,7 @@
     "db:generate": "prisma generate",
     "save-session": "node save-session.js",
     "seed:market": "node seed-market.js",
+    "inspect:notebooklm": "node inspect-notebooklm.js",
     "test": "jest"
   },
   "dependencies": {

@@ -3,48 +3,24 @@ const readline = require('readline');
 const path = require('path');
 const fs = require('fs');
 
+// Shared with notebooklm.processor.ts. The session must be saved under the
+// exact fingerprint it will later be replayed under, or Google bounces it to a
+// sign-in page and then refuses the sign-in with "This browser or app may not
+// be secure".
+const profile = require('./browser-profile');
+
 async function main() {
   console.log('Starting browser in interactive (headed) mode with stealth settings...');
 
-  let browser;
-  const launchOptions = {
-    headless: false,
-    args: [
-      '--disable-blink-features=AutomationControlled',
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-infobars',
-      '--window-size=1280,800',
-    ]
-  };
+  const { browser, channel } = await profile.launchBrowser(chromium, false, console.log);
 
-  // Try Chrome first, then Edge, then default Chromium
-  try {
-    console.log('Attempting to launch Google Chrome...');
-    browser = await chromium.launch({ ...launchOptions, channel: 'chrome' });
-  } catch (e) {
-    try {
-      console.log('Google Chrome not found. Attempting to launch Microsoft Edge...');
-      browser = await chromium.launch({ ...launchOptions, channel: 'msedge' });
-    } catch (e2) {
-      console.log('Edge not found. Falling back to default Chromium...');
-      browser = await chromium.launch(launchOptions);
-    }
+  if (channel === 'chromium') {
+    console.log('\n!! CẢNH BÁO: đang dùng Chromium đóng gói của Playwright.');
+    console.log('   Google thường từ chối đăng nhập trên bản này.');
+    console.log('   Nên cài Google Chrome hoặc Microsoft Edge rồi chạy lại.\n');
   }
 
-  const context = await browser.newContext({
-    viewport: { width: 1280, height: 800 },
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-    locale: 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7',
-    timezoneId: 'Asia/Ho_Chi_Minh',
-  });
-
-  // Inject script to make extra sure navigator.webdriver is undefined
-  await context.addInitScript(() => {
-    Object.defineProperty(navigator, 'webdriver', {
-      get: () => undefined,
-    });
-  });
+  const context = await profile.createContext(browser);
 
   const page = await context.newPage();
   
