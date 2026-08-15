@@ -21,6 +21,7 @@ interface Category {
   id: string;
   name: string;
   description?: string;
+  keywords?: string[];
 }
 
 interface Style {
@@ -60,6 +61,7 @@ export default function MarketPanel() {
   // Form states - Category
   const [catName, setCatName] = useState('');
   const [catDesc, setCatDesc] = useState('');
+  const [catKeywords, setCatKeywords] = useState('');
   const [addingCat, setAddingCat] = useState(false);
 
   // Form states - Style
@@ -84,7 +86,7 @@ export default function MarketPanel() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  const API_BASE = 'http://localhost:3001/api/v1/market';
+  const API_BASE = '/api/v1/market';
 
   // Load initial data
   const loadData = async () => {
@@ -135,10 +137,19 @@ export default function MarketPanel() {
     setError('');
     setSuccess('');
     try {
+      const keywords = catKeywords
+        .split(',')
+        .map(k => k.trim())
+        .filter(Boolean);
+
       const res = await fetch(`${API_BASE}/categories`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: catName.trim(), description: catDesc.trim() || undefined })
+        body: JSON.stringify({
+          name: catName.trim(),
+          description: catDesc.trim() || undefined,
+          keywords: keywords.length > 0 ? keywords : undefined
+        })
       });
 
       if (!res.ok) {
@@ -148,6 +159,7 @@ export default function MarketPanel() {
 
       setCatName('');
       setCatDesc('');
+      setCatKeywords('');
       setSuccess('Category created successfully!');
       await loadData();
     } catch (err: any) {
@@ -247,8 +259,24 @@ export default function MarketPanel() {
         throw new Error(errData.message || 'Failed to trigger discovery engine.');
       }
 
-      const discovered = await res.json();
-      setSuccess(`AI Discovery complete! Found and scored ${discovered.length} trending commercial topics.`);
+      const result = await res.json();
+      const created = result.count ?? 0;
+      const evaluated = result.evaluated ?? 0;
+      const skipped = result.skipped?.length ?? 0;
+
+      if (created === 0) {
+        setError(
+          `Discovery evaluated ${evaluated} keyword(s) but created no topics. ` +
+          (skipped > 0
+            ? `Reason: ${result.skipped[0].reason}`
+            : 'Add seed keywords to a category first.')
+        );
+      } else {
+        setSuccess(
+          `GDELT discovery complete! Scored ${evaluated} keyword(s) and created ${created} topic(s)` +
+          (skipped > 0 ? `, skipped ${skipped}.` : '.')
+        );
+      }
       await loadData();
     } catch (err: any) {
       setError(err.message);
@@ -333,6 +361,17 @@ export default function MarketPanel() {
                   <div key={c.id} className="p-3 rounded-xl bg-black/30 border border-zinc-850 flex flex-col gap-0.5">
                     <span className="text-sm font-semibold text-white">{c.name}</span>
                     {c.description && <span className="text-xs text-zinc-400">{c.description}</span>}
+                    {c.keywords && c.keywords.length > 0 ? (
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {c.keywords.map(k => (
+                          <span key={k} className="text-[10px] px-1.5 py-0.5 rounded bg-accent-cyan/10 text-accent-cyan border border-accent-cyan/20">
+                            {k}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-[10px] text-amber-500/80 mt-1">No seed keywords — skipped by discovery</span>
+                    )}
                   </div>
                 ))
               )}
@@ -356,6 +395,20 @@ export default function MarketPanel() {
                 className="w-full bg-black/40 border border-zinc-850 rounded-xl px-3.5 py-2 text-white text-xs outline-none focus:border-accent-cyan transition-colors"
                 disabled={addingCat}
               />
+              <div className="flex flex-col gap-1">
+                <input
+                  type="text"
+                  placeholder="GDELT keywords, comma separated"
+                  value={catKeywords}
+                  onChange={(e) => setCatKeywords(e.target.value)}
+                  className="w-full bg-black/40 border border-zinc-850 rounded-xl px-3.5 py-2 text-white text-xs outline-none focus:border-accent-cyan transition-colors"
+                  disabled={addingCat}
+                />
+                <span className="text-[10px] text-zinc-500 leading-relaxed">
+                  Use real news subjects (&quot;sustainable packaging&quot;, &quot;electric vehicles&quot;).
+                  Design jargon like &quot;glassmorphism&quot; has no news coverage and will be skipped.
+                </span>
+              </div>
               <button
                 type="submit"
                 disabled={addingCat || !catName.trim()}

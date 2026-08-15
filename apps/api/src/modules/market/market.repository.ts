@@ -11,11 +11,14 @@ export class MarketRepository {
   // Category DB Operations
   // ==========================================
   async createCategory(dto: CreateCategoryDto) {
+    // `keywords` is cast because the generated Prisma client only knows about
+    // the column after `pnpm db:generate` has run against the updated schema.
     return this.prisma.category.create({
       data: {
         name: dto.name,
         description: dto.description,
-      },
+        keywords: dto.keywords ?? [],
+      } as any,
     });
   }
 
@@ -128,6 +131,13 @@ export class MarketRepository {
         category: true,
         style: true,
       },
+    });
+  }
+
+  /** Used by the discovery engine to avoid re-creating the same topic. */
+  async findMarketTopicByTitle(title: string) {
+    return this.prisma.marketTopic.findFirst({
+      where: { title },
     });
   }
 

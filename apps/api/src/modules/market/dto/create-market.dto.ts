@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsNumber, IsInt, Min, Max, IsEnum } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsNumber, IsInt, Min, Max, IsEnum, IsArray, ArrayMaxSize } from 'class-validator';
 
 export class CreateCategoryDto {
   @IsString()
@@ -8,6 +8,18 @@ export class CreateCategoryDto {
   @IsString()
   @IsOptional()
   description?: string;
+
+  /**
+   * Seed subject keywords queried against GDELT during discovery.
+   * These must be real-world news subjects ("sustainable packaging",
+   * "electric vehicles"), not design jargon — GDELT indexes news, so terms
+   * like "glassmorphism" return zero coverage.
+   */
+  @IsArray()
+  @IsString({ each: true })
+  @ArrayMaxSize(25)
+  @IsOptional()
+  keywords?: string[];
 }
 
 export class CreateStyleDto {

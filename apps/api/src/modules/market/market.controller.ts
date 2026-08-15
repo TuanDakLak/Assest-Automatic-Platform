@@ -1,5 +1,6 @@
-import { Controller, Get, Post, Body, Param, Put, Delete, Query, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Put, Delete, Query, HttpCode, HttpStatus, BadRequestException } from '@nestjs/common';
 import { MarketService } from './market.service';
+import { GdeltService } from './gdelt.service';
 import { CreateCategoryDto, CreateStyleDto, CreateMarketTopicDto } from './dto/create-market.dto';
 import { UpdateCategoryDto, UpdateStyleDto, UpdateMarketTopicDto } from './dto/update-market.dto';
 import { 
@@ -14,7 +15,10 @@ import {
 
 @Controller('market')
 export class MarketController {
-  constructor(private readonly marketService: MarketService) {}
+  constructor(
+    private readonly marketService: MarketService,
+    private readonly gdeltService: GdeltService,
+  ) {}
 
   // ==========================================
   // Category Endpoints
@@ -122,7 +126,44 @@ export class MarketController {
   }
 
   @Post('discover')
-  async discoverTopics() {
-    return this.marketService.discoverCommercialTopics();
+  async discoverTopics(@Query('forceRefresh') forceRefresh?: string) {
+    return this.marketService.discoverCommercialTopics({
+      forceRefresh: forceRefresh === 'true',
+    });
+  }
+
+  /**
+   * Inspects the raw GDELT signal for a single keyword without creating a
+   * topic. Useful for checking whether a keyword has any news coverage before
+   * adding it to a category's seed list.
+   */
+  @Get('gdelt/probe')
+  async probeKeyword(
+    @Query('keyword') keyword: string,
+    @Query('forceRefresh') forceRefresh?: string,
+  ) {
+    if (!keyword?.trim()) {
+      throw new BadRequestException('Query parameter "keyword" is required.');
+    }
+
+    const metrics = await this.gdeltService.getMetrics(keyword, {
+      forceRefresh: forceRefresh === 'true',
+    });
+
+    if (!metrics) {
+      return {
+        keyword,
+        usable: false,
+        message:
+          'GDELT returned no usable data. The keyword may have no news coverage, ' +
+          'or the API is currently rate limiting. Try again in a minute.',
+      };
+    }
+
+    return {
+      keyword: metrics.keyword,
+      usable: metrics.searchVolume > 0,
+      ...metrics,
+    };
   }
 }

@@ -1,11 +1,17 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { MarketRepository } from './market.repository';
+import { GdeltService } from './gdelt.service';
 import { CreateCategoryDto, CreateStyleDto, CreateMarketTopicDto } from './dto/create-market.dto';
 import { UpdateCategoryDto, UpdateStyleDto, UpdateMarketTopicDto } from './dto/update-market.dto';
 
 @Injectable()
 export class MarketService {
-  constructor(private readonly repository: MarketRepository) {}
+  private readonly logger = new Logger(MarketService.name);
+
+  constructor(
+    private readonly repository: MarketRepository,
+    private readonly gdelt: GdeltService,
+  ) {}
 
   // ==========================================
   // Category Service Operations
@@ -158,9 +164,25 @@ export class MarketService {
   }
 
   // ==========================================
-  // Auto-Discovery Engine
+  // Auto-Discovery Engine (GDELT-backed)
   // ==========================================
-  async discoverCommercialTopics() {
+
+  /**
+   * Discovers commercial topics by scoring each category's seed keywords
+   * against live world-news coverage from the GDELT DOC 2.0 API.
+   *
+   * Each (category keyword × style) pair becomes one candidate topic. The four
+   * metrics are real signals rather than random numbers:
+   *
+   *   searchVolume     ← matching articles in the recent window
+   *   trendScore       ← recent coverage rate vs the 3-month baseline
+   *   marketScore      ← share of coverage in positive tone bins
+   *   competitionScore ← distinct outlets already covering it
+   *
+   * Keywords GDELT has no coverage for are skipped rather than invented, so an
+   * empty result is a legitimate outcome and is reported as such.
+   */
+  async discoverCommercialTopics(options?: { forceRefresh?: boolean }) {
     const categories = await this.findAllCategories();
     const styles = await this.findAllStyles();
 
@@ -170,53 +192,139 @@ export class MarketService {
       );
     }
 
-    // A list of trending visual concepts
-    const concepts = [
-      'Minimalist E-Commerce Layouts',
-      'Glassmorphic Fintech UI Components',
-      '3D Isometric Space Travel Assets',
-      'Claymorphic Medical Icons',
-      'Retro Cyberpunk Marketing Banners',
-      'Sustainable Living Vector Pack',
-      'Neo-Brutalist SaaS Landing Templates',
-      'Abstract Fluid Presentation Backgrounds',
-      'Futuristic Electric Vehicles Graphics',
-      'Cozy Cottagecore Branding Kits',
-    ];
+    // Build the candidate list from every category that carries seed keywords.
+    const candidates: Array<{ keyword: string; category: (typeof categories)[number] }> = [];
+    for (const category of categories) {
+      const keywords: string[] = (category as any).keywords ?? [];
+      for (const keyword of keywords) {
+        const trimmed = keyword?.trim();
+        if (trimmed) {
+          candidates.push({ keyword: trimmed, category });
+        }
+      }
+    }
+
+    if (candidates.length === 0) {
+      throw new BadRequestException(
+        'No seed keywords configured. Add keywords to at least one category ' +
+          '(PUT /market/categories/:id with { "keywords": ["sustainable packaging", ...] }) ' +
+          'before running discovery.'
+      );
+    }
+
+    this.logger.log(
+      `[Discovery] Scoring ${candidates.length} seed keyword(s) against GDELT across ${categories.length} categor(ies).`
+    );
 
     const discovered = [];
+    const skipped: Array<{ keyword: string; reason: string }> = [];
+    let abortedReason: string | null = null;
 
-    // Select 3 random concepts, randomize metrics, and create topics
-    for (let i = 0; i < 3; i++) {
-      const concept = concepts[Math.floor(Math.random() * concepts.length)];
-      const randomCategory = categories[Math.floor(Math.random() * categories.length)];
-      const randomStyle = styles[Math.floor(Math.random() * styles.length)];
+    // Start each run with a clean breaker so a previous rate-limit episode
+    // does not permanently disable discovery.
+    this.gdelt.resetCircuit();
 
-      const trendScore = Math.floor(Math.random() * 40) + 60; // 60-100
-      const marketScore = Math.floor(Math.random() * 30) + 70; // 70-100
-      const searchVolume = Math.floor(Math.random() * 15000) + 2000; // 2000-17000
-      const competitionScore = Math.floor(Math.random() * 40) + 10; // 10-50 (lower is better)
+    for (const { keyword, category } of candidates) {
+      if (this.gdelt.circuitOpen) {
+        const cooldown = this.gdelt.cooldownSecondsRemaining;
+        abortedReason =
+          'GDELT failed repeatedly, so the run stopped early to avoid deepening the rate limit. ' +
+          (cooldown > 0
+            ? `Wait ${cooldown}s and run discovery again — keywords already resolved are cached.`
+            : 'Run discovery again in a minute — keywords already resolved are cached.');
+
+        // Everything still unprocessed is reported rather than silently dropped.
+        skipped.push({ keyword, reason: 'Not attempted — run aborted early.' });
+        this.logger.warn(`[Discovery] Aborting run at "${keyword}". ${abortedReason}`);
+        continue;
+      }
+
+      const metrics = await this.gdelt.getMetrics(keyword, {
+        forceRefresh: options?.forceRefresh,
+      });
+
+      if (!metrics) {
+        skipped.push({ keyword, reason: 'GDELT returned no usable response.' });
+        this.logger.warn(`[Discovery] Skipping "${keyword}" — no GDELT response.`);
+        continue;
+      }
+
+      if (metrics.searchVolume === 0) {
+        skipped.push({ keyword, reason: 'No news coverage found in the recent window.' });
+        this.logger.warn(
+          `[Discovery] Skipping "${keyword}" — GDELT has zero coverage. ` +
+            'GDELT indexes world news, so design-jargon keywords will not resolve.'
+        );
+        continue;
+      }
+
+      // Pair the subject with a design style. GDELT cannot rank styles, so the
+      // style axis stays owned by the local Style table.
+      const style = styles[Math.floor(Math.random() * styles.length)];
+      const title = this.buildTopicTitle(keyword, category.name, style.name);
+
+      const existing = await this.repository.findMarketTopicByTitle(title);
+      if (existing) {
+        skipped.push({ keyword, reason: `Topic "${title}" already exists.` });
+        this.logger.log(`[Discovery] Skipping duplicate topic: "${title}"`);
+        continue;
+      }
 
       const topicDto: CreateMarketTopicDto = {
-        title: `${concept} (${randomCategory.name} - ${randomStyle.name})`,
-        categoryId: randomCategory.id,
-        styleId: randomStyle.id,
-        trendScore,
-        marketScore,
-        searchVolume,
-        competitionScore,
+        title,
+        categoryId: category.id,
+        styleId: style.id,
+        trendScore: metrics.trendScore,
+        marketScore: metrics.marketScore,
+        // MarketTopic.searchVolume is an Int column.
+        searchVolume: Math.round(metrics.searchVolume),
+        competitionScore: metrics.competitionScore,
         status: 'DISCOVERED',
       };
 
       const topic = await this.createTopic(topicDto);
-      discovered.push(topic);
+      discovered.push({
+        ...topic,
+        gdelt: {
+          keyword: metrics.keyword,
+          articleCount: metrics.articleCount,
+          distinctDomains: metrics.distinctDomains,
+          fetchedAt: metrics.fetchedAt,
+          fromCache: metrics.fromCache,
+        },
+      });
+
+      this.logger.log(`[Discovery] Created topic "${title}" with score ${topic.score}.`);
+    }
+
+    let message: string;
+    if (abortedReason) {
+      message = `Discovery stopped early. ${abortedReason}`;
+    } else if (discovered.length > 0) {
+      message = 'Commercial topic discovery complete.';
+    } else {
+      message = 'Discovery ran but produced no new topics. See "skipped" for details.';
     }
 
     return {
-      message: 'Commercial topic discovery complete.',
+      message,
       count: discovered.length,
+      evaluated: candidates.length,
+      aborted: Boolean(abortedReason),
       topics: discovered,
+      skipped,
     };
+  }
+
+  /** Builds the topic title, keeping it inside the 100-character schema limit. */
+  private buildTopicTitle(keyword: string, categoryName: string, styleName: string): string {
+    const subject = keyword
+      .split(' ')
+      .map((word) => (word ? word[0].toUpperCase() + word.slice(1) : word))
+      .join(' ');
+
+    const title = `${subject} (${categoryName} - ${styleName})`;
+    return title.length <= 100 ? title : `${title.slice(0, 97)}...`;
   }
 
   // ==========================================

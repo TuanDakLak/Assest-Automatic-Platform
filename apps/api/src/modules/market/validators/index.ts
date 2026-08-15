@@ -24,6 +24,16 @@ export class ZodValidationPipe implements PipeTransform {
 export const CreateCategorySchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters long').max(50),
   description: z.string().max(200).optional(),
+  // Seed subject keywords sent to the GDELT DOC 2.0 API during discovery.
+  keywords: z
+    .array(
+      z
+        .string()
+        .min(3, 'Each keyword must be at least 3 characters long')
+        .max(60, 'GDELT phrase queries longer than 60 characters rarely match')
+    )
+    .max(25, 'Keep to 25 keywords per category — each one costs 3 throttled GDELT requests')
+    .optional(),
 });
 
 export const UpdateCategorySchema = CreateCategorySchema.partial();

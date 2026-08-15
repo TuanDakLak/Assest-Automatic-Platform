@@ -95,7 +95,11 @@ export class NotebooklmProcessor implements OnModuleInit, OnModuleDestroy {
         const context = await browser.newContext({
           ...contextOptions,
           acceptDownloads: true,
-          viewport: { width: 1280, height: 800 }
+          viewport: { width: 1280, height: 800 },
+          locale: 'en-US',                         // Ép giao diện NotebookLM sang tiếng Anh
+          extraHTTPHeaders: {
+            'Accept-Language': 'en-US,en;q=0.9',   // Header HTTP báo với Google: dùng tiếng Anh
+          },
         });
 
         const page = await context.newPage();

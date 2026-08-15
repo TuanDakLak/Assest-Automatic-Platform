@@ -53,9 +53,31 @@ model Category {
   id          String        @id @default(uuid())
   name        String        @unique
   description String?
+  // Seed subject keywords queried against the GDELT DOC 2.0 API.
+  // Each keyword becomes one candidate topic per discovery run.
+  keywords    String[]      @default([])
   topics      MarketTopic[]
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
+}
+
+// Cached GDELT metrics per keyword so repeated discovery runs do not
+// re-hit the API, which rate limits aggressively and returns empty bodies.
+model GdeltSnapshot {
+  id               String   @id @default(uuid())
+  keyword          String   @unique
+  searchVolume     Int      @default(0)
+  trendScore       Float    @default(0.0)
+  marketScore      Float    @default(0.0)
+  competitionScore Float    @default(0.0)
+  articleCount     Int      @default(0)
+  distinctDomains  Int      @default(0)
+  raw              Json?
+  fetchedAt        DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([fetchedAt])
 }
 
 // Style model for Market module

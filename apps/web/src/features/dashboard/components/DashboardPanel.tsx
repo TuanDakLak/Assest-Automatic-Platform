@@ -7,7 +7,7 @@ import {
   Loader2, Search, Database, Trash2, ShieldAlert
 } from 'lucide-react';
 
-const API_BASE = 'http://localhost:3001/api/v1';
+const API_BASE = '/api/v1';
 
 export default function DashboardPanel() {
   const [activeTab, setActiveTab] = useState<'categories' | 'topics' | 'jobs' | 'assets' | 'queue' | 'settings'>('categories');

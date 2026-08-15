@@ -9,6 +9,7 @@
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
     "save-session": "node save-session.js",
+    "seed:market": "node seed-market.js",
     "test": "jest"
   },
   "dependencies": {
