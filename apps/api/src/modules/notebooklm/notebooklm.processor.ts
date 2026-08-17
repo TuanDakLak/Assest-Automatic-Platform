@@ -247,21 +247,35 @@ export class NotebooklmProcessor implements OnModuleInit, OnModuleDestroy {
         await confirmBtn.click();
         this.logger.log(`[Job ${job.id}] Step 5: Generation requested`);
 
-        // Wait for the deck to finish. The dialog closes on submit, so the
-        // download control appearing is the completion signal.
+        // Wait for the deck to finish. The dialog closes on submit; the
+        // finished deck's card appearing in the Studio panel is the real
+        // completion signal — there is no "Download" button sitting on the
+        // page to wait for (see the comment on SELECTORS.generatedArtifact).
         this.logger.log(`[Job ${job.id}] Waiting for slide generation...`);
-        await page
-          .locator(SELECTORS.download)
-          .first()
-          .waitFor({ state: 'visible', timeout: 300000 });
+        const artifactItem = page.locator(SELECTORS.generatedArtifact).first();
+        await artifactItem.waitFor({ state: 'visible', timeout: 300000 });
         this.logger.log(`[Job ${job.id}] Slide generation successful.`);
 
-        // Step 6: Download slide deck presentation
+        // Step 6: Download slide deck presentation.
+        //
+        // No direct "Download" control exists on the Studio panel. Confirmed
+        // live against a completed deck: open the finished artifact card,
+        // click its "More" (kebab) button, THEN "Download PowerPoint (.pptx)"
+        // appears as a menu item. Skipping either click leaves the download
+        // control hidden inside a closed menu forever.
+        this.logger.log(`[Job ${job.id}] Step 6: Opening the generated slide deck`);
+        await artifactItem.click();
+
+        const moreOptionsBtn = page.locator(SELECTORS.artifactMoreOptions).first();
+        await moreOptionsBtn.waitFor({ state: 'visible', timeout: 15000 });
+        await moreOptionsBtn.click();
+
         this.logger.log(`[Job ${job.id}] Step 6: Initiating file download`);
         const downloadPromise = page.waitForEvent('download', { timeout: 30000 });
-        
-        const downloadBtn = page.locator(SELECTORS.download);
-        await downloadBtn.first().click();
+
+        const downloadBtn = page.locator(SELECTORS.downloadMenuItem).first();
+        await downloadBtn.waitFor({ state: 'visible', timeout: 10000 });
+        await downloadBtn.click();
 
         const download = await downloadPromise;
         const filename = `${topic.toLowerCase().replace(/[^a-z0-9]+/g, '_')}_presentation_${job.id}.pptx`;

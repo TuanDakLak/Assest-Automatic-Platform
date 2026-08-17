@@ -196,13 +196,42 @@ export const SELECTORS = {
     'div[role="status"]:has-text("Đang tạo")',
   ].join(', '),
 
-  /** Step 6 — download the generated file. */
-  download: [
-    'button[title*="Download" i]',
-    'button[title*="Tải xuống" i]',
-    'button[aria-label*="Download" i]',
-    'button[aria-label*="Tải xuống" i]',
-    'button:has-text("Download")',
-    'button:has-text("Tải xuống")',
+  /**
+   * Step 5d — completion signal: the finished deck's card in the Studio panel.
+   *
+   * NOT a "Download" button. There is no such button sitting on the page
+   * after generation — confirmed live by reading the raw HTML of a completed
+   * notebook, not just the accessibility tree (which reports ARIA roles and
+   * can look clickable while the underlying control is still hidden). The
+   * deck shows up as an artifact card (custom element `artifact-library-item`,
+   * clickable wrapper class `artifact-item-button`); the download control only
+   * exists inside a menu that "More" opens (see `artifactMoreOptions` /
+   * `downloadMenuItem` below). Waiting on a `download` selector directly here
+   * waits for something that is never visible and always times out.
+   */
+  generatedArtifact: [
+    '.artifact-item-button',
+    'artifact-library-item button',
+  ].join(', '),
+
+  /**
+   * Step 6a — open the "More" (kebab) menu on the finished deck's card.
+   * Confirmed live: `button.artifact-more-button`. There is a differently-
+   * scoped "More" button on source rows too, so this must stay class-scoped
+   * rather than matched on aria-label alone.
+   */
+  artifactMoreOptions: [
+    'button.artifact-more-button',
+  ].join(', '),
+
+  /**
+   * Step 6b — "Download PowerPoint (.pptx)" menu item, revealed only after
+   * `artifactMoreOptions` is clicked. Scoped to `role="menuitem"` so it can't
+   * match anything on the page before the menu opens.
+   */
+  downloadMenuItem: [
+    'button[role="menuitem"]:has-text("Download PowerPoint")',
+    'button[role="menuitem"]:has-text("Tải xuống PowerPoint")',
+    '[role="menuitem"]:has-text(".pptx")',
   ].join(', '),
 };

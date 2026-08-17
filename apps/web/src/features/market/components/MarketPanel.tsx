@@ -79,6 +79,12 @@ export default function MarketPanel() {
   const [competitionScore, setCompetitionScore] = useState(30);
   const [addingTopic, setAddingTopic] = useState(false);
 
+  // GDELT Probe states
+  const [probeKeywordInput, setProbeKeywordInput] = useState('');
+  const [probeForceRefresh, setProbeForceRefresh] = useState(false);
+  const [probing, setProbing] = useState(false);
+  const [probeResult, setProbeResult] = useState<any>(null);
+
   // App UI states
   const [loading, setLoading] = useState(false);
   const [discovering, setDiscovering] = useState(false);
@@ -307,6 +313,31 @@ export default function MarketPanel() {
     }
   };
 
+  // Action - Probe GDELT Keyword
+  const handleProbeKeyword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!probeKeywordInput.trim()) return;
+
+    setProbing(true);
+    setProbeResult(null);
+    setError('');
+    try {
+      const res = await fetch(
+        `${API_BASE}/gdelt/probe?keyword=${encodeURIComponent(probeKeywordInput.trim())}&forceRefresh=${probeForceRefresh}`
+      );
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || 'Failed to probe keyword.');
+      }
+      const data = await res.json();
+      setProbeResult(data);
+    } catch (err: any) {
+      setError(err.message || 'Error probing GDELT keyword.');
+    } finally {
+      setProbing(false);
+    }
+  };
+
   // Helper for score colors
   const getScoreColor = (score: number) => {
     if (score >= 75) return 'text-emerald-400 bg-emerald-950/40 border-emerald-500/20';
@@ -475,9 +506,103 @@ export default function MarketPanel() {
             </form>
           </div>
 
-        </div>
+          {/* GDELT Keyword Probe / Tester Card */}
+          <div className="glassmorphism p-6 rounded-2xl border border-border flex flex-col gap-4">
+            <div className="flex items-center gap-2">
+              <Search className="w-5 h-5 text-accent-cyan" />
+              <h3 className="text-lg font-bold text-white">GDELT Keyword Probe</h3>
+            </div>
+            <p className="text-xs text-zinc-400">
+              Test a keyword to see if GDELT or NewsAPI has active news signals before seeding it.
+            </p>
 
-        {/* Right Column: AI Discovery, Manual Creation, Topics Matrix */}
+            <form onSubmit={handleProbeKeyword} className="flex flex-col gap-3">
+              <input
+                type="text"
+                placeholder="Keyword (e.g. circular economy)"
+                value={probeKeywordInput}
+                onChange={(e) => setProbeKeywordInput(e.target.value)}
+                className="w-full bg-black/40 border border-zinc-850 rounded-xl px-3.5 py-2 text-white text-xs outline-none focus:border-accent-cyan transition-colors"
+                disabled={probing}
+              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="probeForceRefresh"
+                  checked={probeForceRefresh}
+                  onChange={(e) => setProbeForceRefresh(e.target.checked)}
+                  className="rounded border-zinc-800 bg-black/40 text-accent-cyan focus:ring-accent-cyan"
+                  disabled={probing}
+                />
+                <label htmlFor="probeForceRefresh" className="text-xs text-zinc-400 select-none cursor-pointer">
+                  Force Refresh (bypass cache)
+                </label>
+              </div>
+              <button
+                type="submit"
+                disabled={probing || !probeKeywordInput.trim()}
+                className="w-full py-2 bg-gradient-to-r from-accent-cyan to-accent-violet hover:opacity-90 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 disabled:opacity-50 transition-all"
+              >
+                {probing ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    Probing GDELT...
+                  </>
+                ) : (
+                  <>
+                    <Search className="w-3.5 h-3.5" />
+                    Probe Keyword
+                  </>
+                )}
+              </button>
+            </form>
+
+            {/* Probe Results Display */}
+            {probeResult && (
+              <div className="mt-2 p-4 rounded-xl bg-black/40 border border-zinc-850 flex flex-col gap-3 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-white truncate max-w-[150px]">&quot;{probeResult.keyword}&quot;</span>
+                  {probeResult.usable ? (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950/80 text-emerald-400 border border-emerald-500/30">
+                      Usable
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950/80 text-amber-400 border border-amber-500/30">
+                      Not Usable
+                    </span>
+                  )}
+                </div>
+
+                {probeResult.usable ? (
+                  <div className="grid grid-cols-2 gap-2 text-[11px] text-zinc-400">
+                    <div className="flex flex-col p-2 bg-zinc-900/50 rounded-lg border border-zinc-800/40">
+                      <span className="text-[10px] text-zinc-500 uppercase font-semibold">Volume</span>
+                      <strong className="text-zinc-200 mt-0.5">{probeResult.searchVolume}</strong>
+                    </div>
+                    <div className="flex flex-col p-2 bg-zinc-900/50 rounded-lg border border-zinc-800/40">
+                      <span className="text-[10px] text-zinc-500 uppercase font-semibold">Trend</span>
+                      <strong className="text-zinc-200 mt-0.5">{probeResult.trendScore}%</strong>
+                    </div>
+                    <div className="flex flex-col p-2 bg-zinc-900/50 rounded-lg border border-zinc-800/40">
+                      <span className="text-[10px] text-zinc-500 uppercase font-semibold">Market</span>
+                      <strong className="text-zinc-200 mt-0.5">{probeResult.marketScore}%</strong>
+                    </div>
+                    <div className="flex flex-col p-2 bg-zinc-900/50 rounded-lg border border-zinc-800/40">
+                      <span className="text-[10px] text-zinc-500 uppercase font-semibold">Competition</span>
+                      <strong className="text-zinc-200 mt-0.5">{probeResult.competitionScore}%</strong>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-zinc-400 leading-relaxed text-[11px]">
+                    {probeResult.message || 'No news coverage or active rate limiting.'}
+                  </p>
+                )}
+              </div>
+            )}
+        </div>
+      </div>
+
+      {/* Right Column: AI Discovery, Manual Creation, Topics Matrix */}
         <div className="xl:col-span-8 flex flex-col gap-6">
 
           {/* Controls Bar */}
