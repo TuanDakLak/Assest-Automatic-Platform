@@ -52,6 +52,15 @@ export class MarketController {
     await this.marketService.removeCategory(id);
   }
 
+  @Post('categories/bulk-delete')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async removeCategoriesBulk(@Body('ids') ids: string[]) {
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      throw new BadRequestException('Parameter "ids" must be a non-empty array of strings.');
+    }
+    await this.marketService.removeCategoriesBulk(ids);
+  }
+
   // ==========================================
   // Style Endpoints
   // ==========================================
@@ -82,6 +91,15 @@ export class MarketController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async removeStyle(@Param('id') id: string) {
     await this.marketService.removeStyle(id);
+  }
+
+  @Post('styles/bulk-delete')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async removeStylesBulk(@Body('ids') ids: string[]) {
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      throw new BadRequestException('Parameter "ids" must be a non-empty array of strings.');
+    }
+    await this.marketService.removeStylesBulk(ids);
   }
 
   // ==========================================
@@ -118,6 +136,15 @@ export class MarketController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async removeTopic(@Param('id') id: string) {
     await this.marketService.removeTopic(id);
+  }
+
+  @Post('topics/bulk-delete')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async removeTopicsBulk(@Body('ids') ids: string[]) {
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      throw new BadRequestException('Parameter "ids" must be a non-empty array of strings.');
+    }
+    await this.marketService.removeTopicsBulk(ids);
   }
 
   @Post('topics/:id/recalculate')

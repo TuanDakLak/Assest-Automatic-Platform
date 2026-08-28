@@ -352,4 +352,16 @@ export class MarketService {
 
     return Math.round(finalScore * 100) / 100;
   }
+
+  async removeCategoriesBulk(ids: string[]) {
+    return this.repository.deleteCategories(ids);
+  }
+
+  async removeStylesBulk(ids: string[]) {
+    return this.repository.deleteStyles(ids);
+  }
+
+  async removeTopicsBulk(ids: string[]) {
+    return this.repository.deleteMarketTopics(ids);
+  }
 }

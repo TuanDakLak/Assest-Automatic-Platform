@@ -92,6 +92,10 @@ export default function MarketPanel() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
+  const [selectedStyleIds, setSelectedStyleIds] = useState<string[]>([]);
+  const [selectedTopicIds, setSelectedTopicIds] = useState<string[]>([]);
+
   const API_BASE = '/api/v1/market';
 
   // Load initial data
@@ -313,6 +317,138 @@ export default function MarketPanel() {
     }
   };
 
+  // Action - Delete Category
+  const handleDeleteCategory = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this category? This might fail if it is associated with active topics.')) return;
+    setError('');
+    setSuccess('');
+    try {
+      const res = await fetch(`${API_BASE}/categories/${id}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || 'Failed to delete category.');
+      }
+      setSuccess('Category deleted successfully.');
+      await loadData();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  // Action - Delete Style
+  const handleDeleteStyle = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this style? This might fail if it is associated with active topics.')) return;
+    setError('');
+    setSuccess('');
+    try {
+      const res = await fetch(`${API_BASE}/styles/${id}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || 'Failed to delete style.');
+      }
+      setSuccess('Style deleted successfully.');
+      await loadData();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  // Action - Delete Topic
+  const handleDeleteTopic = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this topic?')) return;
+    setError('');
+    setSuccess('');
+    try {
+      const res = await fetch(`${API_BASE}/topics/${id}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || 'Failed to delete topic.');
+      }
+      setSuccess('Topic deleted successfully.');
+      await loadData();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  // Action - Delete Multiple Categories
+  const handleDeleteCategoriesBulk = async () => {
+    if (selectedCategoryIds.length === 0) return;
+    if (!window.confirm(`Are you sure you want to delete the ${selectedCategoryIds.length} selected categories? This will also delete any associated topics.`)) return;
+    setError('');
+    setSuccess('');
+    try {
+      const res = await fetch(`${API_BASE}/categories/bulk-delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedCategoryIds }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || 'Failed to delete categories.');
+      }
+      setSuccess(`Successfully deleted ${selectedCategoryIds.length} categories.`);
+      setSelectedCategoryIds([]);
+      await loadData();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  // Action - Delete Multiple Styles
+  const handleDeleteStylesBulk = async () => {
+    if (selectedStyleIds.length === 0) return;
+    if (!window.confirm(`Are you sure you want to delete the ${selectedStyleIds.length} selected styles? This will also delete any associated topics.`)) return;
+    setError('');
+    setSuccess('');
+    try {
+      const res = await fetch(`${API_BASE}/styles/bulk-delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedStyleIds }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || 'Failed to delete styles.');
+      }
+      setSuccess(`Successfully deleted ${selectedStyleIds.length} styles.`);
+      setSelectedStyleIds([]);
+      await loadData();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  // Action - Delete Multiple Topics
+  const handleDeleteTopicsBulk = async () => {
+    if (selectedTopicIds.length === 0) return;
+    if (!window.confirm(`Are you sure you want to delete the ${selectedTopicIds.length} selected topics?`)) return;
+    setError('');
+    setSuccess('');
+    try {
+      const res = await fetch(`${API_BASE}/topics/bulk-delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedTopicIds }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || 'Failed to delete topics.');
+      }
+      setSuccess(`Successfully deleted ${selectedTopicIds.length} topics.`);
+      setSelectedTopicIds([]);
+      await loadData();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
   // Action - Probe GDELT Keyword
   const handleProbeKeyword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -383,14 +519,50 @@ export default function MarketPanel() {
               </span>
             </div>
 
+            {/* Bulk Action Controls */}
+            {selectedCategoryIds.length > 0 && (
+              <div className="flex items-center justify-between p-2.5 rounded-xl bg-red-950/20 border border-red-500/10">
+                <span className="text-xs text-red-400 font-semibold">{selectedCategoryIds.length} selected</span>
+                <button
+                  onClick={handleDeleteCategoriesBulk}
+                  className="px-2.5 py-1 rounded bg-red-950 hover:bg-red-900 border border-red-500/30 text-red-400 text-xs font-bold transition-colors"
+                >
+                  Delete Selected
+                </button>
+              </div>
+            )}
+
             {/* List */}
             <div className="max-h-[180px] overflow-y-auto space-y-2 pr-1">
               {categories.length === 0 ? (
                 <p className="text-xs text-zinc-500 italic py-2">No categories defined yet.</p>
               ) : (
                 categories.map(c => (
-                  <div key={c.id} className="p-3 rounded-xl bg-black/30 border border-zinc-850 flex flex-col gap-0.5">
-                    <span className="text-sm font-semibold text-white">{c.name}</span>
+                  <div key={c.id} className="p-3 rounded-xl bg-black/30 border border-zinc-850 flex flex-col gap-0.5 relative group">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={selectedCategoryIds.includes(c.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedCategoryIds(prev => [...prev, c.id]);
+                            } else {
+                              setSelectedCategoryIds(prev => prev.filter(id => id !== c.id));
+                            }
+                          }}
+                          className="rounded border-zinc-800 bg-zinc-900 text-accent-cyan focus:ring-accent-cyan w-3.5 h-3.5"
+                        />
+                        <span className="text-sm font-semibold text-white">{c.name}</span>
+                      </div>
+                      <button
+                        onClick={() => handleDeleteCategory(c.id)}
+                        className="text-zinc-550 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 p-1"
+                        title="Delete Category"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                     {c.description && <span className="text-xs text-zinc-400">{c.description}</span>}
                     {c.keywords && c.keywords.length > 0 ? (
                       <div className="flex flex-wrap gap-1 mt-1.5">
@@ -463,14 +635,50 @@ export default function MarketPanel() {
               </span>
             </div>
 
+            {/* Bulk Action Controls */}
+            {selectedStyleIds.length > 0 && (
+              <div className="flex items-center justify-between p-2.5 rounded-xl bg-red-950/20 border border-red-500/10">
+                <span className="text-xs text-red-400 font-semibold">{selectedStyleIds.length} selected</span>
+                <button
+                  onClick={handleDeleteStylesBulk}
+                  className="px-2.5 py-1 rounded bg-red-950 hover:bg-red-900 border border-red-500/30 text-red-400 text-xs font-bold transition-colors"
+                >
+                  Delete Selected
+                </button>
+              </div>
+            )}
+
             {/* List */}
             <div className="max-h-[180px] overflow-y-auto space-y-2 pr-1">
               {styles.length === 0 ? (
                 <p className="text-xs text-zinc-500 italic py-2">No design styles defined yet.</p>
               ) : (
                 styles.map(s => (
-                  <div key={s.id} className="p-3 rounded-xl bg-black/30 border border-zinc-850 flex flex-col gap-0.5">
-                    <span className="text-sm font-semibold text-white">{s.name}</span>
+                  <div key={s.id} className="p-3 rounded-xl bg-black/30 border border-zinc-850 flex flex-col gap-0.5 relative group">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={selectedStyleIds.includes(s.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedStyleIds(prev => [...prev, s.id]);
+                            } else {
+                              setSelectedStyleIds(prev => prev.filter(id => id !== s.id));
+                            }
+                          }}
+                          className="rounded border-zinc-800 bg-zinc-900 text-accent-cyan focus:ring-accent-cyan w-3.5 h-3.5"
+                        />
+                        <span className="text-sm font-semibold text-white">{s.name}</span>
+                      </div>
+                      <button
+                        onClick={() => handleDeleteStyle(s.id)}
+                        className="text-zinc-550 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 p-1"
+                        title="Delete Style"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                     {s.description && <span className="text-xs text-zinc-400">{s.description}</span>}
                   </div>
                 ))
@@ -732,16 +940,39 @@ export default function MarketPanel() {
           </div>
 
           {/* Topics Grid Matrix */}
-          <div className="glassmorphism rounded-2xl border border-border flex flex-col overflow-hidden">
-            {/* Table Header Filter */}
+          <div className="glassmorphism rounded-2xl border border-border flex flex-col overflow-hidden">            {/* Table Header Filter */}
             <div className="px-6 py-4 border-b border-border bg-zinc-900/40 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
                 <Activity className="w-4 h-4 text-accent-cyan" />
                 <span className="text-sm font-semibold text-white">Discovered Commercial Potential Topics</span>
+                
+                {filteredTopics.length > 0 && (
+                  <input
+                    type="checkbox"
+                    checked={filteredTopics.every(t => selectedTopicIds.includes(t.id))}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedTopicIds(filteredTopics.map(t => t.id));
+                      } else {
+                        setSelectedTopicIds([]);
+                      }
+                    }}
+                    className="ml-2 rounded border-zinc-800 bg-zinc-900 text-accent-cyan focus:ring-accent-cyan w-3.5 h-3.5"
+                    title="Select All Topics"
+                  />
+                )}
               </div>
 
-              {/* Filters */}
-              <div className="flex items-center gap-2">
+              {/* Filters & Bulk Action */}
+              <div className="flex items-center gap-3">
+                {selectedTopicIds.length > 0 && (
+                  <button
+                    onClick={handleDeleteTopicsBulk}
+                    className="px-2.5 py-1 rounded bg-red-950 hover:bg-red-900 border border-red-500/30 text-red-400 text-xs font-bold transition-colors"
+                  >
+                    Delete Selected ({selectedTopicIds.length})
+                  </button>
+                )}
                 <select
                   value={filterCategory}
                   onChange={(e) => setFilterCategory(e.target.value)}
@@ -779,16 +1010,29 @@ export default function MarketPanel() {
                 <div className="divide-y divide-zinc-850/60">
                   {filteredTopics.map((topic) => (
                     <div key={topic.id} className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-zinc-900/10 transition-colors">
-                      <div className="flex flex-col gap-1.5">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h4 className="text-sm font-bold text-white">{topic.title}</h4>
-                          <span className="text-[10px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700/40">
-                            {topic.category?.name || 'Category'}
-                          </span>
-                          <span className="text-[10px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700/40">
-                            {topic.style?.name || 'Style'}
-                          </span>
-                        </div>
+                      <div className="flex items-start gap-3">
+                        <input
+                          type="checkbox"
+                          checked={selectedTopicIds.includes(topic.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedTopicIds(prev => [...prev, topic.id]);
+                            } else {
+                              setSelectedTopicIds(prev => prev.filter(id => id !== topic.id));
+                            }
+                          }}
+                          className="mt-1 rounded border-zinc-800 bg-zinc-900 text-accent-cyan focus:ring-accent-cyan w-3.5 h-3.5 shrink-0"
+                        />
+                        <div className="flex flex-col gap-1.5">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="text-sm font-bold text-white">{topic.title}</h4>
+                            <span className="text-[10px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700/40">
+                              {topic.category?.name || 'Category'}
+                            </span>
+                            <span className="text-[10px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700/40">
+                              {topic.style?.name || 'Style'}
+                            </span>
+                          </div>
                         
                         {/* Detail Scores */}
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1 mt-1 text-[11px] text-zinc-400">
@@ -810,6 +1054,7 @@ export default function MarketPanel() {
                           </span>
                         </div>
                       </div>
+                    </div>
 
                       {/* Recalculate and Score representation */}
                       <div className="flex items-center gap-3 shrink-0 self-end sm:self-center">
@@ -820,6 +1065,14 @@ export default function MarketPanel() {
                           title="Recalculate Weighted Score"
                         >
                           <RefreshCw className={`w-3.5 h-3.5 ${recalculatingId === topic.id ? 'animate-spin text-accent-cyan' : ''}`} />
+                        </button>
+                        
+                        <button
+                          onClick={() => handleDeleteTopic(topic.id)}
+                          className="p-2 rounded-lg bg-zinc-800/80 hover:bg-red-950/60 border border-zinc-750 hover:border-red-500/20 text-zinc-400 hover:text-red-400 transition-colors"
+                          title="Delete Topic"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                         
                         <div className={`px-3.5 py-1.5 rounded-xl border text-sm font-bold flex flex-col items-center justify-center shrink-0 min-w-[70px] ${getScoreColor(topic.score)}`}>

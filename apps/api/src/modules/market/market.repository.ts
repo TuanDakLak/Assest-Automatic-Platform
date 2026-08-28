@@ -157,4 +157,32 @@ export class MarketRepository {
       where: { id },
     });
   }
+
+  async deleteCategories(ids: string[]) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.marketTopic.deleteMany({
+        where: { categoryId: { in: ids } },
+      });
+      return tx.category.deleteMany({
+        where: { id: { in: ids } },
+      });
+    });
+  }
+
+  async deleteStyles(ids: string[]) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.marketTopic.deleteMany({
+        where: { styleId: { in: ids } },
+      });
+      return tx.style.deleteMany({
+        where: { id: { in: ids } },
+      });
+    });
+  }
+
+  async deleteMarketTopics(ids: string[]) {
+    return this.prisma.marketTopic.deleteMany({
+      where: { id: { in: ids } },
+    });
+  }
 }

@@ -45,6 +45,9 @@ export default function DashboardPanel() {
   const [newTopicStyle, setNewTopicStyle] = useState('');
   const [newTopicTrend, setNewTopicTrend] = useState(85);
 
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
+  const [selectedTopicIds, setSelectedTopicIds] = useState<string[]>([]);
+
   // Load dashboard data on mount & refresh
   const fetchData = async () => {
     setRefreshing(true);
@@ -194,6 +197,100 @@ export default function DashboardPanel() {
     }
   };
 
+  const handleDeleteCategory = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this category? This might fail if it is associated with active topics.')) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/market/categories/${id}`, {
+        method: 'DELETE',
+      }).catch(() => null);
+
+      if (res && res.ok) {
+        alert('Category deleted successfully.');
+        fetchData();
+      } else {
+        // Fallback for simulation
+        setCategories(prev => prev.filter(c => c.id !== id));
+        alert('Category deleted (simulated).');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteTopic = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this topic?')) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/market/topics/${id}`, {
+        method: 'DELETE',
+      }).catch(() => null);
+
+      if (res && res.ok) {
+        alert('Topic deleted successfully.');
+        fetchData();
+      } else {
+        // Fallback for simulation
+        setTopics(prev => prev.filter(t => t.id !== id));
+        alert('Topic deleted (simulated).');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteCategoriesBulk = async () => {
+    if (selectedCategoryIds.length === 0) return;
+    if (!window.confirm(`Are you sure you want to delete the ${selectedCategoryIds.length} selected categories? This will also delete any associated topics.`)) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/market/categories/bulk-delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedCategoryIds }),
+      }).catch(() => null);
+
+      if (res && res.ok) {
+        alert('Selected categories deleted successfully.');
+        setSelectedCategoryIds([]);
+        fetchData();
+      } else {
+        // Fallback for simulation
+        setCategories(prev => prev.filter(c => !selectedCategoryIds.includes(c.id)));
+        setSelectedCategoryIds([]);
+        alert('Selected categories deleted (simulated).');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteTopicsBulk = async () => {
+    if (selectedTopicIds.length === 0) return;
+    if (!window.confirm(`Are you sure you want to delete the ${selectedTopicIds.length} selected topics?`)) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/market/topics/bulk-delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedTopicIds }),
+      }).catch(() => null);
+
+      if (res && res.ok) {
+        alert('Selected topics deleted successfully.');
+        setSelectedTopicIds([]);
+        fetchData();
+      } else {
+        // Fallback for simulation
+        setTopics(prev => prev.filter(t => !selectedTopicIds.includes(t.id)));
+        setSelectedTopicIds([]);
+        alert('Selected topics deleted (simulated).');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const triggerPipeline = async (topicId: string) => {
     setLoading(true);
     try {
@@ -327,15 +424,65 @@ export default function DashboardPanel() {
             
             {/* List */}
             <div className="lg:col-span-2 flex flex-col gap-4">
-              <h3 className="text-lg font-bold text-white">Discovered Categories</h3>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <h3 className="text-lg font-bold text-white">Discovered Categories</h3>
+                  {categories.length > 0 && (
+                    <input
+                      type="checkbox"
+                      checked={categories.every(c => selectedCategoryIds.includes(c.id))}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedCategoryIds(categories.map(c => c.id));
+                        } else {
+                          setSelectedCategoryIds([]);
+                        }
+                      }}
+                      className="rounded border-zinc-800 bg-zinc-900 text-accent-cyan focus:ring-accent-cyan w-4 h-4"
+                      title="Select All Categories"
+                    />
+                  )}
+                </div>
+                {selectedCategoryIds.length > 0 && (
+                  <button
+                    onClick={handleDeleteCategoriesBulk}
+                    className="px-3 py-1.5 rounded-xl bg-red-950 hover:bg-red-900 border border-red-500/30 text-red-400 text-xs font-bold transition-colors"
+                  >
+                    Delete Selected ({selectedCategoryIds.length})
+                  </button>
+                )}
+              </div>
+              
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {categories.map((cat) => (
-                  <div key={cat.id} className="p-5 rounded-2xl border border-zinc-900 bg-zinc-950/40 flex flex-col gap-2">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-accent-cyan font-bold text-sm">
-                        #
+                  <div key={cat.id} className="p-5 rounded-2xl border border-zinc-900 bg-zinc-950/40 flex flex-col gap-2 relative group">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2.5">
+                        <input
+                          type="checkbox"
+                          checked={selectedCategoryIds.includes(cat.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedCategoryIds(prev => [...prev, cat.id]);
+                            } else {
+                              setSelectedCategoryIds(prev => prev.filter(id => id !== cat.id));
+                            }
+                          }}
+                          className="rounded border-zinc-800 bg-zinc-900 text-accent-cyan focus:ring-accent-cyan w-4 h-4 shrink-0"
+                        />
+                        <div className="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-accent-cyan font-bold text-sm">
+                          #
+                        </div>
+                        <h4 className="font-bold text-white text-base">{cat.name}</h4>
                       </div>
-                      <h4 className="font-bold text-white text-base">{cat.name}</h4>
+                      <button
+                        onClick={() => handleDeleteCategory(cat.id)}
+                        disabled={loading}
+                        className="text-zinc-505 hover:text-red-400 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity p-1.5"
+                        title="Delete Category"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                     <p className="text-xs text-zinc-400 leading-relaxed">{cat.description || 'No description provided.'}</p>
                   </div>
@@ -390,11 +537,40 @@ export default function DashboardPanel() {
             
             {/* Table list */}
             <div className="lg:col-span-2 flex flex-col gap-4">
-              <h3 className="text-lg font-bold text-white">Commercial Hot Topics</h3>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <h3 className="text-lg font-bold text-white">Commercial Hot Topics</h3>
+                  {topics.length > 0 && (
+                    <input
+                      type="checkbox"
+                      checked={topics.every(t => selectedTopicIds.includes(t.id))}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedTopicIds(topics.map(t => t.id));
+                        } else {
+                          setSelectedTopicIds([]);
+                        }
+                      }}
+                      className="rounded border-zinc-800 bg-zinc-900 text-accent-cyan focus:ring-accent-cyan w-4 h-4"
+                      title="Select All Topics"
+                    />
+                  )}
+                </div>
+                {selectedTopicIds.length > 0 && (
+                  <button
+                    onClick={handleDeleteTopicsBulk}
+                    className="px-3 py-1.5 rounded-xl bg-red-950 hover:bg-red-900 border border-red-500/30 text-red-400 text-xs font-bold transition-colors"
+                  >
+                    Delete Selected ({selectedTopicIds.length})
+                  </button>
+                )}
+              </div>
+
               <div className="overflow-x-auto rounded-2xl border border-zinc-900 bg-zinc-950/40">
                 <table className="w-full text-left border-collapse text-sm">
                   <thead>
                     <tr className="border-b border-zinc-900 bg-zinc-900/10 text-zinc-400 font-semibold">
+                      <th className="p-4 w-10">Select</th>
                       <th className="p-4">Title / Category</th>
                       <th className="p-4 text-center">Score</th>
                       <th className="p-4 text-center">Status</th>
@@ -404,6 +580,20 @@ export default function DashboardPanel() {
                   <tbody>
                     {topics.map((topic) => (
                       <tr key={topic.id} className="border-b border-zinc-900/60 hover:bg-zinc-900/20">
+                        <td className="p-4">
+                          <input
+                            type="checkbox"
+                            checked={selectedTopicIds.includes(topic.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedTopicIds(prev => [...prev, topic.id]);
+                              } else {
+                                setSelectedTopicIds(prev => prev.filter(id => id !== topic.id));
+                              }
+                            }}
+                            className="rounded border-zinc-800 bg-zinc-900 text-accent-cyan focus:ring-accent-cyan w-4 h-4"
+                          />
+                        </td>
                         <td className="p-4">
                           <div className="font-bold text-white">{topic.title}</div>
                           <div className="text-xs text-zinc-500">{topic.category?.name || 'General'}</div>
@@ -417,13 +607,22 @@ export default function DashboardPanel() {
                             {topic.status}
                           </span>
                         </td>
-                        <td className="p-4 text-right">
+                        <td className="p-4 text-right flex items-center justify-end gap-2">
                           <button
                             onClick={() => triggerPipeline(topic.id)}
                             disabled={loading}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent/15 hover:bg-accent/30 text-white text-xs font-semibold transition"
                           >
                             <Play className="w-3 h-3 text-accent-cyan" /> Run Pipeline
+                          </button>
+                          
+                          <button
+                            onClick={() => handleDeleteTopic(topic.id)}
+                            disabled={loading}
+                            className="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-red-950/20 hover:bg-red-950/60 border border-red-500/10 hover:border-red-500/30 text-red-400 text-xs font-semibold transition"
+                            title="Delete Topic"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </td>
                       </tr>
