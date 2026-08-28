@@ -285,6 +285,11 @@ export class GdeltService {
       return null;
     }
 
+    if (!this.enabled) {
+      this.logger.warn('[GDELT] Disabled via GDELT_ENABLED / NODE_ENV=test. Returning null.');
+      return null;
+    }
+
     if (this.mockEnabled) {
       this.logger.log(`[GDELT] Mock Mode active. Generating deterministic metrics for "${normalised}".`);
       return this.generateMockMetrics(normalised);
