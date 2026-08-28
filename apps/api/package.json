@@ -26,7 +26,7 @@
     "cron": "^4.4.0",
     "dotenv": "^16.4.5",
     "ioredis": "^5.4.1",
-    "node-pptx-png": "^2.0.0",
+    "node-pptx-png": "workspace:*",
     "playwright": "^1.62.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
